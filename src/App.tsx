@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
 
 type AppLanguage = 'en' | 'fr' | 'ar';
 type Step = 'app-lang' | 'role-select' | 'comm-lang' | 'ritual' | 'chat' | 'rating';
@@ -131,6 +132,12 @@ export default function App() {
   const [callDuration, setCallDuration] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+
   const t = translations[appLang];
   const isRtl = appLang === 'ar';
 
@@ -144,29 +151,159 @@ export default function App() {
     return () => clearInterval(interval);
   }, [callState]);
 
+  useEffect(() => {
+    socketRef.current = io();
+
+    socketRef.current.on('matched', ({ roomId: newRoomId }) => {
+      setRoomId(newRoomId);
+      setStep('chat');
+    });
+
+    socketRef.current.on('receive_message', ({ text }) => {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text,
+        sender: 'other',
+        timestamp: new Date()
+      }]);
+    });
+
+    socketRef.current.on('partner_left', () => {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text: 'الطرف الآخر غادر الجلسة / Partner left the session',
+        sender: 'other',
+        timestamp: new Date(),
+        isSystem: true
+      }]);
+      cleanupCall();
+    });
+
+    // WebRTC Signaling
+    socketRef.current.on('webrtc_offer', async ({ offer }) => {
+      await setupWebRTC();
+      if (peerConnectionRef.current) {
+        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnectionRef.current.createAnswer();
+        await peerConnectionRef.current.setLocalDescription(answer);
+        socketRef.current?.emit('webrtc_answer', { roomId, answer });
+        setCallState('active');
+      }
+    });
+
+    socketRef.current.on('webrtc_answer', async ({ answer }) => {
+      if (peerConnectionRef.current) {
+        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+        setCallState('active');
+      }
+    });
+
+    socketRef.current.on('webrtc_ice_candidate', async ({ candidate }) => {
+      if (peerConnectionRef.current && candidate) {
+        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
+
+    socketRef.current.on('call_ended', () => {
+      cleanupCall();
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text: 'Audio call ended by partner',
+        sender: 'other',
+        timestamp: new Date(),
+        isSystem: true
+      }]);
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+      cleanupCall();
+    };
+  }, [roomId]);
+
+  const setupWebRTC = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+      
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+      peerConnectionRef.current = pc;
+
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socketRef.current?.emit('webrtc_ice_candidate', { roomId, candidate: event.candidate });
+        }
+      };
+
+      pc.ontrack = (event) => {
+        if (!remoteAudioRef.current) {
+          const audio = new Audio();
+          audio.autoplay = true;
+          remoteAudioRef.current = audio;
+        }
+        remoteAudioRef.current.srcObject = event.streams[0];
+      };
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+    }
+  };
+
+  const cleanupCall = () => {
+    setCallState('idle');
+    setCallDuration(0);
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const initiateCall = () => {
+  const initiateCall = async () => {
     setCallState('calling');
-    // Simulate other party accepting the call after 3 seconds
-    setTimeout(() => {
-      setCallState(prev => prev === 'calling' ? 'active' : prev);
-    }, 3000);
+    await setupWebRTC();
+    if (peerConnectionRef.current) {
+      const offer = await peerConnectionRef.current.createOffer();
+      await peerConnectionRef.current.setLocalDescription(offer);
+      socketRef.current?.emit('webrtc_offer', { roomId, offer });
+    }
   };
 
   const endCall = () => {
-    setCallState('idle');
+    socketRef.current?.emit('end_call', { roomId });
+    cleanupCall();
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
       text: `${t.callEnded} (${formatTime(callDuration)})`,
-      sender: 'other',
+      sender: 'me',
       timestamp: new Date(),
       isSystem: true
     }]);
+  };
+
+  const toggleMute = () => {
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
   };
 
   const handleAppLangSelect = (lang: AppLanguage) => {
@@ -182,26 +319,7 @@ export default function App() {
 
   const startRitual = () => {
     setStep('ritual');
-    
-    // Simulate the ritual / matching phase
-    setTimeout(() => {
-      setStep('chat');
-      if (role === 'guardian') {
-        setTimeout(() => {
-          // Select simulated message based on chosen communication language if possible, fallback to app language
-          const simMsg = commLang === 'ar' ? translations.ar.simulatedGuardianMsg 
-                       : commLang === 'fr' ? translations.fr.simulatedGuardianMsg 
-                       : translations.en.simulatedGuardianMsg;
-          
-          setMessages([{
-            id: '1',
-            text: simMsg,
-            sender: 'other',
-            timestamp: new Date()
-          }]);
-        }, 1500);
-      }
-    }, 4000);
+    socketRef.current?.emit('join_queue', { role, lang: commLang });
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -216,26 +334,13 @@ export default function App() {
     };
 
     setMessages(prev => [...prev, newMessage]);
+    socketRef.current?.emit('send_message', { roomId, text: inputText });
     setInputText('');
-
-    // Simulate response if user is confessor
-    if (role === 'confessor' && messages.length === 0) {
-      setTimeout(() => {
-        const simMsg = commLang === 'ar' ? translations.ar.simulatedConfessorMsg 
-                     : commLang === 'fr' ? translations.fr.simulatedConfessorMsg 
-                     : translations.en.simulatedConfessorMsg;
-
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          text: simMsg,
-          sender: 'other',
-          timestamp: new Date()
-        }]);
-      }, 2000);
-    }
   };
 
   const endSession = () => {
+    socketRef.current?.emit('leave_session', { roomId });
+    cleanupCall();
     setStep('rating');
   };
 
@@ -244,8 +349,8 @@ export default function App() {
     setRole(null);
     setMessages([]);
     setRating(0);
-    setCallState('idle');
-    setCallDuration(0);
+    setRoomId(null);
+    cleanupCall();
   };
 
   useEffect(() => {
@@ -463,7 +568,7 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       {callState === 'active' && (
                         <button 
-                          onClick={() => setIsMuted(!isMuted)}
+                          onClick={toggleMute}
                           className={`p-3 rounded-full transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700'}`}
                         >
                           {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
