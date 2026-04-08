@@ -46,11 +46,17 @@ jobs:
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
-        java-version: '21'
+        java-version: '17'
 
     - name: Make gradlew executable
       working-directory: ./android
       run: chmod +x gradlew
+
+    - name: Fix Kotlin Duplicate Classes
+      working-directory: ./android
+      run: |
+        echo "android.enableJetifier=true" >> gradle.properties
+        echo "android.useAndroidX=true" >> gradle.properties
 
     - name: Build Debug APK
       working-directory: ./android
