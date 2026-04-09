@@ -4,10 +4,52 @@ import { Server } from 'socket.io';
 import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
+import authRouter from './auth.js';
+import db from './database.js';
 
 async function startServer() {
   const app = express();
   const server = http.createServer(app);
+  
+  // Trust proxy for rate limiting behind reverse proxies
+  app.set('trust proxy', 1);
+  
+  // Security Headers
+  app.use(helmet({
+    contentSecurityPolicy: false, // Disabled for Vite dev server compatibility
+  }));
+  app.use(express.json());
+
+  // Rate Limiting
+  const generalLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 100,
+    validate: { trustProxy: false, xForwardedForHeader: false, forwardedHeader: false }
+  });
+  const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 3,
+    validate: { trustProxy: false, xForwardedForHeader: false, forwardedHeader: false }
+  });
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5,
+    validate: { trustProxy: false, xForwardedForHeader: false, forwardedHeader: false }
+  });
+
+  app.use('/auth/register', registerLimiter);
+  app.use('/auth/login', loginLimiter);
+  app.use('/api', generalLimiter);
+
+  app.use('/auth', authRouter);
+
+  // Cleanup old login attempts periodically
+  setInterval(() => {
+    db.prepare('DELETE FROM login_attempts WHERE timestamp < ?').run(Date.now() - 24 * 60 * 60 * 1000);
+  }, 60 * 60 * 1000);
   
   // تأمين CORS: قبول النطاقات المسموحة فقط
   const allowedOrigins = process.env.ALLOWED_ORIGINS 
@@ -18,6 +60,19 @@ async function startServer() {
     cors: { 
       origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
       methods: ['GET', 'POST']
+    }
+  });
+
+  const JWT_SECRET = process.env.JWT_SECRET || 'confesio_super_secret_key_2026';
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error('unauthorized'));
+    try {
+      const payload = jwt.verify(token, JWT_SECRET) as any;
+      socket.data.anonymousId = payload.anonymousId;
+      next();
+    } catch (e) {
+      next(new Error('unauthorized'));
     }
   });
 
@@ -50,10 +105,10 @@ async function startServer() {
   const queueTimeouts = new Map<string, NodeJS.Timeout>();
 
   // --- إضافة ٤: تتبع الغرف النشطة لحساب مدة الجلسة ---
-  const activeRooms = new Map<string, { confessor: string, guardian: string, lang: string, startTime: number }>();
+  const activeRooms = new Map<string, { confessor: string, guardian: string, confessorAnonId: string, guardianAnonId: string, lang: string, startTime: number }>();
 
   // --- إضافة ٢: نظام التقييم بالنجوم ---
-  const sessionRatings = new Map<string, { confessor?: number, guardian?: number, guardianId: string }>();
+  const sessionRatings = new Map<string, { confessor?: number, guardian?: number, guardianId: string, guardianAnonId: string, confessorAnonId: string }>();
   const guardianStats = new Map<string, { totalScore: number, count: number }>();
 
   // --- إضافة ١: نظام الكلمات المفتاحية للأزمات النفسية ---
@@ -83,12 +138,29 @@ async function startServer() {
       completedSessions++;
       totalSessionDuration += duration;
       sessionsPerLang[room.lang] = (sessionsPerLang[room.lang] || 0) + 1;
+      
+      // Update DB stats
+      db.transaction(() => {
+        db.prepare('UPDATE users SET completed_sessions = completed_sessions + 1, confessions = confessions + 1 WHERE anonymousId = ?').run(room.confessorAnonId);
+        db.prepare('UPDATE users SET completed_sessions = completed_sessions + 1, guardian_sessions = guardian_sessions + 1 WHERE anonymousId = ?').run(room.guardianAnonId);
+        
+        // Check badges
+        const confessor = db.prepare('SELECT confessions FROM users WHERE anonymousId = ?').get(room.confessorAnonId) as any;
+        if (confessor && confessor.confessions === 1) {
+          db.prepare('INSERT OR IGNORE INTO badges (anonymousId, badgeId, earnedAt) VALUES (?, ?, ?)').run(room.confessorAnonId, 'first_confession', Date.now());
+        }
+      })();
+
       activeRooms.delete(roomId);
     }
   };
 
   io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+    const anonymousId = socket.data.anonymousId;
+    console.log('User connected:', socket.id, 'AnonymousId:', anonymousId);
+
+    // Update lastSeen
+    db.prepare('UPDATE users SET lastSeen = ? WHERE anonymousId = ?').run(Date.now(), anonymousId);
 
     socket.on('join_queue', ({ role, lang }) => {
       if (!queues[lang]) queues[lang] = { confessors: [], guardians: [] };
@@ -127,6 +199,9 @@ async function startServer() {
         const guardianSocket = io.sockets.sockets.get(guardianId);
 
         if (confessorSocket && guardianSocket) {
+          const confessorAnonId = confessorSocket.data.anonymousId;
+          const guardianAnonId = guardianSocket.data.anonymousId;
+
           confessorSocket.join(roomId);
           guardianSocket.join(roomId);
 
@@ -136,10 +211,10 @@ async function startServer() {
           socketRooms.set(guardianId, roomId);
 
           // حفظ بيانات الغرفة للإحصاءات والأزمات
-          activeRooms.set(roomId, { confessor: confessorId, guardian: guardianId, lang: matchLang, startTime: Date.now() });
+          activeRooms.set(roomId, { confessor: confessorId, guardian: guardianId, confessorAnonId, guardianAnonId, lang: matchLang, startTime: Date.now() });
 
           // تهيئة التقييم للغرفة
-          sessionRatings.set(roomId, { guardianId });
+          sessionRatings.set(roomId, { guardianId, guardianAnonId, confessorAnonId });
 
           confessorSocket.emit('matched', { roomId, role: 'confessor', turnConfig });
           guardianSocket.emit('matched', { roomId, role: 'guardian', turnConfig });
@@ -210,17 +285,30 @@ async function startServer() {
       // إذا قام الطرفان بالتقييم
       if (session.confessor !== undefined && session.guardian !== undefined) {
         const avg = (session.confessor + session.guardian) / 2;
-        const gStats = guardianStats.get(session.guardianId) || { totalScore: 0, count: 0 };
         
-        gStats.totalScore += avg;
-        gStats.count += 1;
-        guardianStats.set(session.guardianId, gStats);
+        // Update DB
+        const guardian = db.prepare('SELECT avg_rating, guardian_sessions FROM users WHERE anonymousId = ?').get(session.guardianAnonId) as any;
+        if (guardian) {
+          const newAvg = ((guardian.avg_rating * guardian.guardian_sessions) + avg) / (guardian.guardian_sessions + 1);
+          db.prepare('UPDATE users SET avg_rating = ? WHERE anonymousId = ?').run(newAvg, session.guardianAnonId);
+          
+          // Check trusted guardian badge
+          if (guardian.guardian_sessions + 1 >= 5 && newAvg >= 4.0) {
+            db.prepare('INSERT OR IGNORE INTO badges (anonymousId, badgeId, earnedAt) VALUES (?, ?, ?)').run(session.guardianAnonId, 'trusted_guardian', Date.now());
+          }
 
-        const cumulativeAvg = gStats.totalScore / gStats.count;
+          // إرسال التقييم التراكمي للحارس فقط
+          io.to(session.guardianId).emit('guardian_rating_update', { averageRating: newAvg });
+        }
         
-        // إرسال التقييم التراكمي للحارس فقط
-        io.to(session.guardianId).emit('guardian_rating_update', { averageRating: cumulativeAvg });
-        
+        // Log session
+        const sessionId = crypto.randomUUID();
+        const confessorHash = crypto.createHash('sha256').update(session.confessorAnonId).digest('hex');
+        const guardianHash = crypto.createHash('sha256').update(session.guardianAnonId).digest('hex');
+        db.prepare('INSERT INTO sessions_log (id, confessorHash, guardianHash, duration, rating, timestamp) VALUES (?, ?, ?, ?, ?, ?)').run(
+          sessionId, confessorHash, guardianHash, 0, avg, Date.now()
+        );
+
         sessionRatings.delete(roomId);
       }
     });

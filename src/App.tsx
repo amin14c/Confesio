@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
+import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff, UserCircle } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
+import { useAuth } from './hooks/useAuth';
+import { AuthScreen } from './components/AuthScreen';
+import { AccountDashboard } from './components/AccountDashboard';
 
 type AppLanguage = 'en' | 'fr' | 'ar';
 type Step = 'app-lang' | 'role-select' | 'comm-lang' | 'ritual' | 'chat' | 'rating';
@@ -141,6 +144,8 @@ const communicationLanguages = [
 ];
 
 export default function App() {
+  const { user, token } = useAuth();
+  const [showDashboard, setShowDashboard] = useState(false);
   const [appLang, setAppLang] = useState<AppLanguage>('en');
   const [step, setStep] = useState<Step>('app-lang');
   const [role, setRole] = useState<Role>(null);
@@ -190,7 +195,10 @@ export default function App() {
   }, [roomId]);
 
   useEffect(() => {
-    socketRef.current = io();
+    if (!token) return;
+    socketRef.current = io({
+      auth: { token }
+    });
 
     socketRef.current.on('matched', ({ roomId: newRoomId, turnConfig: newTurnConfig }) => {
       setRoomId(newRoomId);
@@ -449,8 +457,14 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   return (
-    <div dir={isRtl ? 'rtl' : 'ltr'} className="min-h-screen bg-[#050505] text-gray-100 flex flex-col font-sans selection:bg-purple-900 selection:text-white">
+    <div dir={isRtl ? 'rtl' : 'ltr'} className="min-h-screen bg-[#050505] text-gray-100 flex flex-col font-sans selection:bg-purple-900 selection:text-white relative">
+      {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} />}
+      
       <AnimatePresence mode="wait">
         
         {/* STEP 0: APP LANGUAGE SELECTION */}
@@ -460,8 +474,13 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full"
+            className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full relative"
           >
+            <div className="absolute top-6 right-6">
+              <button onClick={() => setShowDashboard(true)} className="p-2 text-gray-500 hover:text-amber-500 transition-colors">
+                <UserCircle className="w-8 h-8" />
+              </button>
+            </div>
             <Globe2 className="w-12 h-12 text-zinc-500 mb-8" strokeWidth={1} />
             <h1 className="text-2xl font-light mb-8 text-white">Confessio</h1>
             
@@ -486,8 +505,13 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full"
+            className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full relative"
           >
+            <div className="absolute top-6 right-6">
+              <button onClick={() => setShowDashboard(true)} className="p-2 text-gray-500 hover:text-amber-500 transition-colors">
+                <UserCircle className="w-8 h-8" />
+              </button>
+            </div>
             <div className="text-center mb-16">
               <h1 className="text-4xl font-light tracking-widest mb-4 text-white">Confessio</h1>
               <p className="text-gray-400 text-sm">{t.subtitle}</p>
