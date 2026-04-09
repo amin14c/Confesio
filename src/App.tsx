@@ -45,7 +45,14 @@ const translations = {
     calling: 'Calling...',
     activeCall: 'Audio Call Active',
     endCall: 'End Call',
-    callEnded: 'Audio call ended'
+    callEnded: 'Audio call ended',
+    partnerLeft: 'Partner has disconnected or left the session',
+    cancel: 'Cancel',
+    queueTimeout: 'Wait time exceeded. Please try again.',
+    crisisAlert: '⚠️ Your partner seems to be in a crisis — please be fully present and listen carefully.',
+    supportResources: 'If you need immediate help, please reach out to: Algeria 3548, International befrienders.org',
+    guardianRatingMsg: 'Your cumulative guardian rating is: ',
+    submitRating: 'Submit Rating & Return'
   },
   fr: {
     appLangTitle: "Langue de l'application",
@@ -76,7 +83,14 @@ const translations = {
     calling: 'Appel en cours...',
     activeCall: 'Appel audio actif',
     endCall: 'Terminer l\'appel',
-    callEnded: 'Appel audio terminé'
+    callEnded: 'Appel audio terminé',
+    partnerLeft: 'Le partenaire s\'est déconnecté ou a quitté la session',
+    cancel: 'Annuler',
+    queueTimeout: 'Temps d\'attente dépassé. Veuillez réessayer.',
+    crisisAlert: '⚠️ Votre partenaire semble traverser une crise — soyez pleinement présent et écoutez attentivement.',
+    supportResources: 'Si vous avez besoin d\'aide immédiate, contactez : Algérie 3548, International befrienders.org',
+    guardianRatingMsg: 'Votre note globale de gardien est : ',
+    submitRating: 'Soumettre la note et retourner'
   },
   ar: {
     appLangTitle: 'اختر لغة التطبيق',
@@ -107,7 +121,14 @@ const translations = {
     calling: 'يتصل...',
     activeCall: 'مكالمة صوتية نشطة',
     endCall: 'إنهاء المكالمة',
-    callEnded: 'انتهت المكالمة الصوتية'
+    callEnded: 'انتهت المكالمة الصوتية',
+    partnerLeft: 'الطرف الآخر انقطع اتصاله أو غادر الجلسة',
+    cancel: 'إلغاء',
+    queueTimeout: 'انتهى وقت الانتظار. يرجى المحاولة مرة أخرى.',
+    crisisAlert: '⚠️ يبدو أن شريكك يمر بأزمة — كن حاضراً بشكل كامل واستمع بعناية.',
+    supportResources: 'إذا كنت بحاجة لمساعدة فورية، يرجى التواصل مع: الجزائر 3548، دولي befrienders.org',
+    guardianRatingMsg: 'متوسط تقييمك التراكمي كحارس هو: ',
+    submitRating: 'إرسال التقييم والعودة'
   }
 };
 
@@ -130,9 +151,13 @@ export default function App() {
   const [callState, setCallState] = useState<'idle' | 'calling' | 'active'>('idle');
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [waitingTime, setWaitingTime] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [roomId, setRoomId] = useState<string | null>(null);
+  const roomIdRef = useRef<string | null>(null);
+  const [turnConfig, setTurnConfig] = useState<RTCConfiguration | null>(null);
+  const [guardianRating, setGuardianRating] = useState<number | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -152,14 +177,28 @@ export default function App() {
   }, [callState]);
 
   useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (step === 'ritual') {
+      setWaitingTime(0);
+      interval = setInterval(() => setWaitingTime(w => w + 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [step]);
+
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
+
+  useEffect(() => {
     socketRef.current = io();
 
-    socketRef.current.on('matched', ({ roomId: newRoomId }) => {
+    socketRef.current.on('matched', ({ roomId: newRoomId, turnConfig: newTurnConfig }) => {
       setRoomId(newRoomId);
+      if (newTurnConfig) setTurnConfig(newTurnConfig);
       setStep('chat');
     });
 
-    socketRef.current.on('receive_message', ({ text }) => {
+    socketRef.current.on('receive_message', ({ text, role }) => {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         text,
@@ -168,15 +207,47 @@ export default function App() {
       }]);
     });
 
-    socketRef.current.on('partner_left', () => {
+    socketRef.current.on('crisis_alert', ({ message }) => {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
-        text: 'الطرف الآخر غادر الجلسة / Partner left the session',
+        text: t.crisisAlert,
+        sender: 'other',
+        timestamp: new Date(),
+        isSystem: true
+      }]);
+    });
+
+    socketRef.current.on('support_resources', ({ message }) => {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text: t.supportResources,
+        sender: 'other',
+        timestamp: new Date(),
+        isSystem: true
+      }]);
+    });
+
+    socketRef.current.on('guardian_rating_update', ({ averageRating }) => {
+      setGuardianRating(averageRating);
+    });
+
+    const handlePartnerLeft = () => {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text: t.partnerLeft,
         sender: 'other',
         timestamp: new Date(),
         isSystem: true
       }]);
       cleanupCall();
+    };
+
+    socketRef.current.on('partner_left', handlePartnerLeft);
+    socketRef.current.on('partner_disconnected', handlePartnerLeft);
+
+    socketRef.current.on('queue_timeout', () => {
+      alert(t.queueTimeout);
+      setStep('role-select');
     });
 
     // WebRTC Signaling
@@ -186,7 +257,7 @@ export default function App() {
         await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnectionRef.current.createAnswer();
         await peerConnectionRef.current.setLocalDescription(answer);
-        socketRef.current?.emit('webrtc_answer', { roomId, answer });
+        socketRef.current?.emit('webrtc_answer', { roomId: roomIdRef.current, answer });
         setCallState('active');
       }
     });
@@ -208,7 +279,7 @@ export default function App() {
       cleanupCall();
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
-        text: 'Audio call ended by partner',
+        text: t.callEnded,
         sender: 'other',
         timestamp: new Date(),
         isSystem: true
@@ -219,14 +290,14 @@ export default function App() {
       socketRef.current?.disconnect();
       cleanupCall();
     };
-  }, [roomId]);
+  }, []); // Empty dependency array to prevent socket reconnection
 
   const setupWebRTC = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
       
-      const pc = new RTCPeerConnection({
+      const pc = new RTCPeerConnection(turnConfig || {
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
       });
       peerConnectionRef.current = pc;
@@ -235,7 +306,7 @@ export default function App() {
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          socketRef.current?.emit('webrtc_ice_candidate', { roomId, candidate: event.candidate });
+          socketRef.current?.emit('webrtc_ice_candidate', { roomId: roomIdRef.current, candidate: event.candidate });
         }
       };
 
@@ -280,12 +351,12 @@ export default function App() {
     if (peerConnectionRef.current) {
       const offer = await peerConnectionRef.current.createOffer();
       await peerConnectionRef.current.setLocalDescription(offer);
-      socketRef.current?.emit('webrtc_offer', { roomId, offer });
+      socketRef.current?.emit('webrtc_offer', { roomId: roomIdRef.current, offer });
     }
   };
 
   const endCall = () => {
-    socketRef.current?.emit('end_call', { roomId });
+    socketRef.current?.emit('end_call', { roomId: roomIdRef.current });
     cleanupCall();
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
@@ -322,6 +393,11 @@ export default function App() {
     socketRef.current?.emit('join_queue', { role, lang: commLang });
   };
 
+  const cancelQueue = () => {
+    socketRef.current?.emit('leave_queue', { role, lang: commLang });
+    setStep('role-select');
+  };
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -339,9 +415,25 @@ export default function App() {
   };
 
   const endSession = () => {
-    socketRef.current?.emit('leave_session', { roomId });
+    socketRef.current?.emit('leave_session', { roomId: roomIdRef.current });
     cleanupCall();
     setStep('rating');
+  };
+
+  const submitRatingAndReset = () => {
+    if (rating > 0 && roomIdRef.current) {
+      socketRef.current?.emit('submit_rating', { 
+        roomId: roomIdRef.current, 
+        rating, 
+        reviewerRole: role 
+      });
+    }
+    setStep('role-select');
+    setRole(null);
+    setMessages([]);
+    setRating(0);
+    setRoomId(null);
+    cleanupCall();
   };
 
   const resetApp = () => {
@@ -420,6 +512,12 @@ export default function App() {
                 <Shield className="w-8 h-8 text-emerald-400 mb-4 mx-auto" strokeWidth={1.5} />
                 <h2 className="text-xl font-semibold mb-2">{t.guardian}</h2>
                 <p className="text-sm text-gray-500">{t.guardianDesc}</p>
+                {guardianRating !== null && (
+                  <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-center gap-2">
+                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                    <span className="text-sm font-medium text-yellow-500">{guardianRating.toFixed(1)}</span>
+                  </div>
+                )}
               </button>
             </div>
           </motion.div>
@@ -475,7 +573,7 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="flex-1 flex flex-col items-center justify-center p-6"
           >
-            <div className="relative flex items-center justify-center w-64 h-64">
+            <div className="relative flex items-center justify-center w-64 h-64 mb-12">
               <motion.div 
                 animate={{ 
                   scale: [1, 1.5, 1],
@@ -498,6 +596,18 @@ export default function App() {
                   {role === 'confessor' ? t.waitConfessor : t.waitGuardian}
                 </p>
               </motion.div>
+            </div>
+
+            <div className="flex flex-col items-center gap-6">
+              <div className="font-mono text-xl text-gray-300 bg-zinc-900/80 px-5 py-2.5 rounded-xl border border-zinc-800 shadow-lg">
+                ⏱ {formatTime(waitingTime)}
+              </div>
+              <button 
+                onClick={cancelQueue}
+                className="text-sm text-red-400/80 hover:text-red-400 transition-colors px-8 py-2.5 rounded-full border border-red-900/30 hover:bg-red-900/20"
+              >
+                {t.cancel}
+              </button>
             </div>
           </motion.div>
         )}
@@ -683,11 +793,11 @@ export default function App() {
               </div>
               
               <button 
-                onClick={resetApp}
+                onClick={submitRatingAndReset}
                 disabled={rating === 0}
                 className="w-full py-3 rounded-full bg-white text-black font-medium disabled:opacity-20 disabled:cursor-not-allowed transition-all hover:bg-gray-200"
               >
-                {t.returnStart}
+                {t.submitRating}
               </button>
             </div>
           </motion.div>
