@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (token) {
       localStorage.setItem('confesio_token', token);
-      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://ais-pre-fduaxhgzo5qqvm7mr4rsnv-685021133578.europe-west2.run.app';
       fetch(`${apiUrl}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       })
