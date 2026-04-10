@@ -196,7 +196,7 @@ export default function App() {
 
   useEffect(() => {
     if (!token) return;
-    const apiUrl = import.meta.env.VITE_API_URL || 'https://ais-pre-fduaxhgzo5qqvm7mr4rsnv-685021133578.europe-west2.run.app';
+    const apiUrl = import.meta.env.VITE_API_URL || '';
     socketRef.current = io(apiUrl, {
       auth: { token }
     });
