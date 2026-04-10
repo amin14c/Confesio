@@ -41,7 +41,8 @@ export const AccountDashboard = ({ onClose }: { onClose: () => void }) => {
   const handleDelete = async () => {
     if (deleteConfirm !== 'DELETE' || !password) return;
     try {
-      const res = await fetch('/auth/delete-account', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/auth/delete-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ password })

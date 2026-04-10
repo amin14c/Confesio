@@ -16,7 +16,8 @@ export const AuthScreen = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/auth/register', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
@@ -36,7 +37,8 @@ export const AuthScreen = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/auth/login', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ anonymousId, password })
@@ -54,7 +56,8 @@ export const AuthScreen = () => {
   const completeRegistration = async () => {
     if (!newIdentity) return;
     try {
-      const res = await fetch('/auth/me', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/auth/me`, {
         headers: { Authorization: `Bearer ${newIdentity.token}` }
       });
       const data = await res.json();

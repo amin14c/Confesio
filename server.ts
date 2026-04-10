@@ -7,8 +7,8 @@ import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
-import authRouter from './auth.js';
-import db from './database.js';
+import authRouter from './auth.ts';
+import db from './database.ts';
 
 async function startServer() {
   const app = express();

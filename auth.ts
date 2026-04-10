@@ -2,7 +2,7 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import db from './database.js';
+import db from './database.ts';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'confesio_super_secret_key_2026';

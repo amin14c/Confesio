@@ -196,7 +196,8 @@ export default function App() {
 
   useEffect(() => {
     if (!token) return;
-    socketRef.current = io({
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    socketRef.current = io(apiUrl, {
       auth: { token }
     });
 
