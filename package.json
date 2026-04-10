@@ -9,12 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "start": "tsx server.ts",
-    "sync": "npx cap sync"
+    "start": "tsx server.ts"
   },
   "dependencies": {
-    "@capacitor/android": "^8.3.0",
-    "@capacitor/core": "^8.3.0",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/cors": "^2.8.19",
@@ -37,7 +34,6 @@
     "vite": "^6.2.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.3.0",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",

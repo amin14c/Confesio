@@ -49,6 +49,11 @@ async function startServer() {
   app.use('/api', generalLimiter);
 
   app.use('/auth', authRouter);
+  
+  // Endpoint for UptimeRobot to keep the server awake
+  app.get('/ping', (req, res) => {
+    res.status(200).send('pong');
+  });
 
   // Cleanup old login attempts periodically
   setInterval(() => {
