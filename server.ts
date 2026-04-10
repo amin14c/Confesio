@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
+import cors from 'cors';
 import authRouter from './auth.ts';
 import db from './database.ts';
 
@@ -16,6 +17,9 @@ async function startServer() {
   
   // Trust proxy for rate limiting behind reverse proxies
   app.set('trust proxy', 1);
+  
+  // Enable CORS for all routes (needed for Android app)
+  app.use(cors());
   
   // Security Headers
   app.use(helmet({
