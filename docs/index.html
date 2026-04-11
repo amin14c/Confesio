@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Confessio — مكان لما لا يُقال</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --black: #030303;
+    --void: #080808;
+    --coal: #111111;
+    --ash: #1a1a1a;
+    --smoke: #2a2a2a;
+    --gold: #c9a84c;
+    --gold-dim: #8a6f2e;
+    --gold-glow: rgba(201,168,76,0.15);
+    --amber: #e8c060;
+    --ivory: #f0e8d8;
+    --ghost: rgba(240,232,216,0.06);
+    --mist: rgba(240,232,216,0.03);
+    --danger: rgba(255,80,80,0.6);
+    --success: rgba(80,200,120,0.6);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--black);
+    color: var(--ivory);
+    font-family: 'Noto Naskh Arabic', serif;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  /* ═══ HERO ═══ */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 2rem;
+    overflow: hidden;
+  }
+
+  .hero::after {
+    content: '';
+    position: absolute;
+    top: 30%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(ellipse, rgba(201,168,76,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    animation: breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  }
+
+  .candle-wrap {
+    position: relative;
+    width: 60px;
+    margin-bottom: 2.5rem;
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .candle-body {
+    width: 24px;
+    height: 80px;
+    background: linear-gradient(180deg, #f5e6c8 0%, #e8d0a0 40%, #d4b87a 100%);
+    margin: 0 auto;
+    border-radius: 3px 3px 2px 2px;
+    position: relative;
+    box-shadow: inset -4px 0 8px rgba(0,0,0,0.2);
+  }
+
+  .candle-body::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 20px;
+    background: linear-gradient(180deg, #c9a84c, #8a6f2e);
+    border-radius: 0 0 2px 2px;
+  }
+
+  .wick { width: 2px; height: 14px; background: #333; margin: 0 auto; position: relative; }
+
+  .flame {
+    position: absolute;
+    top: -28px; left: 50%;
+    transform: translateX(-50%);
+    width: 14px; height: 28px;
+  }
+
+  .flame-inner {
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 8px; height: 20px;
+    background: radial-gradient(ellipse at 50% 80%, #fff 0%, #ffd700 40%, #ff8c00 80%, transparent 100%);
+    border-radius: 50% 50% 30% 30%;
+    animation: flicker 0.15s ease-in-out infinite alternate;
+    filter: blur(0.5px);
+  }
+
+  .flame-outer {
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 14px; height: 28px;
+    background: radial-gradient(ellipse at 50% 80%, rgba(255,200,50,0.6) 0%, rgba(255,100,0,0.3) 60%, transparent 100%);
+    border-radius: 50% 50% 30% 30%;
+    animation: flicker2 0.2s ease-in-out infinite alternate;
+    filter: blur(2px);
+  }
+
+  @keyframes flicker {
+    0% { transform: translateX(-50%) scaleX(1) scaleY(1) rotate(-1deg); }
+    100% { transform: translateX(-50%) scaleX(0.9) scaleY(1.05) rotate(1deg); }
+  }
+
+  @keyframes flicker2 {
+    0% { transform: translateX(-50%) scaleX(1) rotate(1deg); opacity: 0.8; }
+    100% { transform: translateX(-50%) scaleX(1.1) rotate(-1deg); opacity: 1; }
+  }
+
+  .flame-glow {
+    position: absolute;
+    top: -20px; left: 50%;
+    transform: translateX(-50%);
+    width: 50px; height: 50px;
+    background: radial-gradient(ellipse, rgba(255,200,80,0.25) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: glowPulse 1.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes glowPulse {
+    0% { opacity: 0.5; transform: translateX(-50%) scale(0.9); }
+    100% { opacity: 1; transform: translateX(-50%) scale(1.2); }
+  }
+
+  .hero-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(3rem, 10vw, 7rem);
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    color: var(--gold);
+    text-shadow: 0 0 60px rgba(201,168,76,0.3), 0 0 120px rgba(201,168,76,0.1);
+    animation: titleReveal 1.5s ease forwards;
+    opacity: 0;
+    transform: translateY(20px);
+    margin-bottom: 0.5rem;
+  }
+
+  @keyframes titleReveal {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-tagline {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: clamp(1rem, 3vw, 1.4rem);
+    color: rgba(240,232,216,0.5);
+    letter-spacing: 0.1em;
+    animation: titleReveal 1.5s 0.3s ease forwards;
+    opacity: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  .hero-arabic {
+    font-size: clamp(1.1rem, 3vw, 1.5rem);
+    color: rgba(240,232,216,0.35);
+    margin-bottom: 3rem;
+    animation: titleReveal 1.5s 0.5s ease forwards;
+    opacity: 0;
+  }
+
+  .cta-group {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: titleReveal 1.5s 0.8s ease forwards;
+    opacity: 0;
+  }
+
+  .btn-primary {
+    padding: 0.9rem 2.5rem;
+    background: var(--gold);
+    color: var(--black);
+    font-family: 'Noto Naskh Arabic', serif;
+    font-size: 1rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(201,168,76,0.4); }
+
+  .btn-ghost {
+    padding: 0.9rem 2.5rem;
+    background: transparent;
+    color: var(--gold);
+    font-family: 'Noto Naskh Arabic', serif;
+    font-size: 1rem;
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .btn-ghost:hover { border-color: var(--gold); background: rgba(201,168,76,0.05); transform: translateY(-2px); }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 2rem; left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(240,232,216,0.2);
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    animation: fadeInUp 2s 2s ease forwards;
+    opacity: 0;
+  }
+
+  .scroll-line {
+    width: 1px; height: 50px;
+    background: linear-gradient(180deg, rgba(201,168,76,0.4), transparent);
+    animation: scrollDown 2s ease-in-out infinite;
+  }
+
+  @keyframes scrollDown {
+    0% { transform: scaleY(0); transform-origin: top; }
+    50% { transform: scaleY(1); transform-origin: top; }
+    51% { transform: scaleY(1); transform-origin: bottom; }
+    100% { transform: scaleY(0); transform-origin: bottom; }
+  }
+
+  @keyframes fadeInUp { to { opacity: 1; } }
+
+  /* ═══ SECTIONS ═══ */
+  section { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; position: relative; }
+
+  .section-label {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 0.75rem;
+    color: var(--gold-dim);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+
+  .section-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    font-weight: 600;
+    color: var(--ivory);
+    line-height: 1.2;
+    margin-bottom: 1.5rem;
+  }
+
+  .section-title span { color: var(--gold); }
+
+  .divider {
+    width: 60px; height: 1px;
+    background: linear-gradient(90deg, var(--gold), transparent);
+    margin-bottom: 2rem;
+  }
+
+  /* ═══ HOW IT WORKS ═══ */
+  .how-section { padding: 6rem 2rem; background: var(--void); position: relative; }
+  .how-inner { max-width: 1100px; margin: 0 auto; }
+
+  .steps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 2rem; margin-top: 3rem;
+  }
+
+  .step-card {
+    background: var(--ghost);
+    border: 1px solid rgba(201,168,76,0.08);
+    border-radius: 4px;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s;
+  }
+
+  .step-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    opacity: 0; transition: opacity 0.4s;
+  }
+
+  .step-card:hover { border-color: rgba(201,168,76,0.2); transform: translateY(-4px); }
+  .step-card:hover::before { opacity: 1; }
+
+  .step-num { font-family: 'Cinzel', serif; font-size: 3rem; font-weight: 900; color: rgba(201,168,76,0.1); line-height: 1; margin-bottom: 1rem; }
+  .step-icon { font-size: 1.8rem; margin-bottom: 1rem; }
+  .step-title { font-family: 'Cinzel', serif; font-size: 0.95rem; color: var(--gold); letter-spacing: 0.1em; margin-bottom: 0.7rem; }
+  .step-desc { font-size: 0.9rem; color: rgba(240,232,216,0.5); line-height: 1.8; }
+
+  /* ═══ ROLES ═══ */
+  .roles-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px; margin-top: 3rem;
+    background: rgba(201,168,76,0.1);
+  }
+
+  @media (max-width: 600px) { .roles-grid { grid-template-columns: 1fr; } }
+
+  .role-card {
+    background: var(--coal);
+    padding: 3rem 2.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s;
+  }
+
+  .role-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 100%, rgba(201,168,76,0.05) 0%, transparent 70%);
+    opacity: 0; transition: opacity 0.4s;
+  }
+
+  .role-card:hover::after { opacity: 1; }
+  .role-symbol { font-size: 3rem; margin-bottom: 1.5rem; display: block; }
+  .role-name { font-family: 'Cinzel', serif; font-size: 1.4rem; color: var(--gold); margin-bottom: 0.5rem; }
+  .role-arabic { font-size: 1rem; color: rgba(240,232,216,0.3); margin-bottom: 1.5rem; }
+  .role-desc { font-size: 0.9rem; color: rgba(240,232,216,0.55); line-height: 2; }
+
+  .role-rules { margin-top: 1.5rem; list-style: none; }
+  .role-rules li {
+    font-size: 0.82rem; color: rgba(240,232,216,0.35);
+    padding: 0.4rem 0;
+    border-bottom: 1px solid rgba(240,232,216,0.05);
+    display: flex; align-items: center; gap: 0.7rem;
+  }
+  .role-rules li::before { content: '—'; color: var(--gold-dim); flex-shrink: 0; }
+
+  /* ═══ PRIVACY ═══ */
+  .privacy-section { background: var(--void); padding: 6rem 2rem; }
+  .privacy-inner { max-width: 1100px; margin: 0 auto; }
+
+  .privacy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.5rem; margin-top: 3rem;
+  }
+
+  .privacy-item {
+    text-align: center; padding: 2rem 1.5rem;
+    border: 1px solid var(--ghost);
+    border-radius: 4px; transition: all 0.3s;
+  }
+
+  .privacy-item:hover { border-color: rgba(201,168,76,0.15); background: var(--mist); }
+  .privacy-icon { font-size: 2rem; margin-bottom: 1rem; display: block; }
+  .privacy-title { font-family: 'Cinzel', serif; font-size: 0.8rem; color: var(--gold); letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+  .privacy-desc { font-size: 0.78rem; color: rgba(240,232,216,0.35); line-height: 1.7; }
+
+  /* ═══ QUOTE ═══ */
+  .quote-section { padding: 8rem 2rem; text-align: center; position: relative; overflow: hidden; }
+  .quote-section::before {
+    content: '"'; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    font-family: 'Cinzel', serif; font-size: 20rem; color: rgba(201,168,76,0.03); line-height: 1; pointer-events: none;
+  }
+
+  .quote-text {
+    font-family: 'IM Fell English', serif; font-style: italic;
+    font-size: clamp(1.3rem, 3vw, 2rem); color: rgba(240,232,216,0.6);
+    max-width: 700px; margin: 0 auto 2rem; line-height: 1.8; position: relative;
+  }
+
+  .quote-author { font-size: 0.75rem; color: rgba(201,168,76,0.4); letter-spacing: 0.3em; text-transform: uppercase; }
+
+  /* ═══ FEATURES ═══ */
+  .features-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem; margin-top: 3rem;
+  }
+
+  .feature-item {
+    display: flex; gap: 1.2rem; padding: 1.5rem;
+    background: var(--ghost); border-radius: 4px;
+    border: 1px solid rgba(240,232,216,0.04); transition: all 0.3s;
+  }
+
+  .feature-item:hover { border-color: rgba(201,168,76,0.1); background: rgba(201,168,76,0.03); }
+
+  .feature-icon-wrap {
+    width: 44px; height: 44px;
+    background: rgba(201,168,76,0.08);
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem; flex-shrink: 0;
+  }
+
+  .feature-content h4 { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold); letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+  .feature-content p { font-size: 0.82rem; color: rgba(240,232,216,0.4); line-height: 1.7; }
+
+  /* ═══ CTA ═══ */
+  .cta-section {
+    padding: 8rem 2rem; text-align: center;
+    position: relative; background: var(--void); overflow: hidden;
+  }
+
+  .cta-section::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 800px; height: 400px;
+    background: radial-gradient(ellipse, rgba(201,168,76,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .cta-section h2 { font-family: 'Cinzel', serif; font-size: clamp(1.8rem, 4vw, 3.5rem); color: var(--ivory); margin-bottom: 1rem; position: relative; }
+  .cta-section p { color: rgba(240,232,216,0.4); font-size: 1rem; margin-bottom: 3rem; position: relative; }
+  .cta-section .cta-group { opacity: 1; animation: none; }
+
+  /* ═══ FOOTER ═══ */
+  footer {
+    padding: 3rem 2rem;
+    border-top: 1px solid rgba(240,232,216,0.05);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 1rem;
+    max-width: 1100px; margin: 0 auto;
+  }
+
+  .footer-brand { font-family: 'Cinzel', serif; font-size: 1.2rem; color: var(--gold); letter-spacing: 0.1em; }
+  .footer-text { font-size: 0.75rem; color: rgba(240,232,216,0.2); letter-spacing: 0.05em; }
+  .footer-links { display: flex; gap: 1.5rem; }
+  .footer-links a { font-size: 0.75rem; color: rgba(240,232,216,0.25); text-decoration: none; letter-spacing: 0.1em; transition: color 0.3s; }
+  .footer-links a:hover { color: var(--gold); }
+
+  /* ═══ NAV ═══ */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    padding: 1.2rem 2rem;
+    display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(180deg, rgba(3,3,3,0.95) 0%, transparent 100%);
+    backdrop-filter: blur(10px);
+  }
+
+  .nav-logo { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--gold); letter-spacing: 0.15em; text-decoration: none; }
+
+  .nav-links { display: flex; gap: 2rem; list-style: none; }
+  .nav-links a { font-size: 0.75rem; color: rgba(240,232,216,0.4); text-decoration: none; letter-spacing: 0.15em; text-transform: uppercase; transition: color 0.3s; }
+  .nav-links a:hover { color: var(--gold); }
+
+  @media (max-width: 600px) { .nav-links { display: none; } }
+
+  /* ═══ MODAL ═══ */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.92);
+    backdrop-filter: blur(12px);
+    z-index: 999;
+    display: none; align-items: center; justify-content: center;
+    padding: 2rem;
+  }
+
+  .modal-overlay.active { display: flex; }
+
+  .modal {
+    background: var(--coal);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 4px;
+    padding: 2.5rem;
+    max-width: 460px; width: 100%;
+    position: relative;
+    animation: modalIn 0.3s ease;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .modal-close {
+    position: absolute; top: 1rem; left: 1rem;
+    background: none; border: none;
+    color: rgba(240,232,216,0.3); font-size: 1.2rem;
+    cursor: pointer; transition: color 0.3s; z-index: 2;
+  }
+
+  .modal-close:hover { color: var(--gold); }
+
+  .modal-candle { text-align: center; font-size: 2rem; margin-bottom: 1rem; }
+
+  .modal h3 {
+    font-family: 'Cinzel', serif; font-size: 1.4rem;
+    color: var(--gold); margin-bottom: 0.3rem; text-align: center;
+  }
+
+  .modal-sub { font-size: 0.82rem; color: rgba(240,232,216,0.35); text-align: center; margin-bottom: 1.5rem; line-height: 1.6; }
+
+  /* ═══ STEP INDICATOR ═══ */
+  .step-indicator {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0.5rem; margin-bottom: 2rem;
+  }
+
+  .step-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(240,232,216,0.1);
+    transition: all 0.3s;
+  }
+
+  .step-dot.active { background: var(--gold); box-shadow: 0 0 8px rgba(201,168,76,0.4); }
+  .step-dot.done { background: var(--gold-dim); }
+
+  .step-line { width: 30px; height: 1px; background: rgba(240,232,216,0.08); }
+
+  /* ═══ LANGUAGE SELECTION ═══ */
+  .lang-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 0.8rem; margin-bottom: 1.5rem;
+  }
+
+  .lang-btn {
+    padding: 0.9rem 0.5rem;
+    background: var(--ash);
+    border: 1px solid rgba(240,232,216,0.06);
+    border-radius: 3px;
+    color: rgba(240,232,216,0.5);
+    cursor: pointer;
+    transition: all 0.3s;
+    text-align: center;
+    font-family: 'Noto Naskh Arabic', serif;
+    font-size: 0.8rem;
+  }
+
+  .lang-btn:hover { border-color: rgba(201,168,76,0.3); color: var(--ivory); }
+
+  .lang-btn.selected {
+    border-color: var(--gold);
+    background: rgba(201,168,76,0.08);
+    color: var(--gold);
+  }
+
+  .lang-flag { font-size: 1.5rem; display: block; margin-bottom: 0.3rem; }
+  .lang-name-local { font-size: 0.85rem; display: block; }
+  .lang-name-en { font-size: 0.65rem; color: rgba(240,232,216,0.25); display: block; margin-top: 0.1rem; }
+
+  /* ═══ TABS ═══ */
+  .tab-group {
+    display: flex;
+    border-bottom: 1px solid rgba(240,232,216,0.08);
+    margin-bottom: 1.5rem;
+  }
+
+  .tab {
+    flex: 1; padding: 0.7rem;
+    background: none; border: none;
+    color: rgba(240,232,216,0.35);
+    font-family: 'Noto Naskh Arabic', serif;
+    font-size: 0.9rem;
+    cursor: pointer; transition: all 0.3s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+
+  .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+  /* ═══ FORM ═══ */
+  .form-field { margin-bottom: 1.1rem; }
+
+  .form-field label {
+    display: block; font-size: 0.72rem;
+    color: rgba(240,232,216,0.35);
+    letter-spacing: 0.15em; margin-bottom: 0.4rem;
+  }
+
+  .form-field input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--ash);
+    border: 1px solid rgba(240,232,216,0.08);
+    border-radius: 2px;
+    color: var(--ivory);
+    font-family: 'Noto Naskh Arabic', serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.3s;
+    text-align: right;
+  }
+
+  .form-field input[dir="ltr"] { text-align: left; font-family: monospace; font-size: 0.8rem; }
+  .form-field input:focus { border-color: rgba(201,168,76,0.4); }
+
+  .form-field .input-hint {
+    font-size: 0.68rem;
+    color: rgba(240,232,216,0.2);
+    margin-top: 0.3rem;
+    line-height: 1.5;
+  }
+
+  .form-field .input-hint.warn { color: rgba(255,150,80,0.6); }
+  .form-field .input-hint.ok { color: rgba(80,200,120,0.6); }
+
+  /* Username availability indicator */
+  .username-row {
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+
+  .username-row input { flex: 1; }
+
+  .avail-badge {
+    font-size: 0.7rem; padding: 0.2rem 0.5rem;
+    border-radius: 2px; white-space: nowrap; flex-shrink: 0;
+    transition: all 0.3s;
+  }
+
+  .avail-badge.checking { background: rgba(240,232,216,0.05); color: rgba(240,232,216,0.3); }
+  .avail-badge.available { background: rgba(80,200,120,0.1); color: rgba(80,200,120,0.8); }
+  .avail-badge.taken { background: rgba(255,80,80,0.1); color: rgba(255,80,80,0.7); }
+
+  /* Remember me */
+  .remember-row {
+    display: flex; align-items: center; gap: 0.8rem;
+    margin: 0.8rem 0 1.2rem;
+  }
+
+  .remember-row input[type="checkbox"] { display: none; }
+
+  .custom-check {
+    width: 18px; height: 18px;
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s; flex-shrink: 0;
+    background: var(--ash);
+  }
+
+  .custom-check.checked {
+    background: var(--gold);
+    border-color: var(--gold);
+  }
+
+  .custom-check.checked::after { content: '✓'; color: var(--black); font-size: 0.7rem; font-weight: bold; }
+
+  .remember-label { font-size: 0.8rem; color: rgba(240,232,216,0.4); cursor: pointer; }
+
+  /* Session badge */
+  .session-badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 2px;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.75rem;
+    color: var(--gold);
+    margin-bottom: 1.5rem;
+  }
+
+  /* UUID card */
+  .uuid-card {
+    background: var(--ash);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 3px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    text-align: center;
+  }
+
+  .uuid-label { font-size: 0.68rem; color: rgba(240,232,216,0.3); letter-spacing: 0.15em; margin-bottom: 0.5rem; }
+
+  .uuid-value {
+    font-family: monospace; font-size: 0.75rem;
+    color: var(--gold); letter-spacing: 0.05em;
+    word-break: break-all; direction: ltr;
+    line-height: 1.6;
+  }
+
+  .uuid-warning {
+    background: rgba(255,80,80,0.05);
+    border: 1px solid rgba(255,80,80,0.2);
+    border-radius: 2px;
+    padding: 0.7rem 1rem;
+    font-size: 0.75rem;
+    color: rgba(255,150,80,0.7);
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    text-align: center;
+  }
+
+  .modal-note { font-size: 0.7rem; color: rgba(240,232,216,0.2); text-align: center; margin-top: 1rem; line-height: 1.6; }
+
+  /* Logged in banner */
+  .logged-in-banner {
+    display: none;
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 3px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+  }
+
+  .logged-in-banner.show { display: block; }
+
+  .banner-row { display: flex; justify-content: space-between; align-items: center; }
+  .banner-name { font-family: 'Cinzel', serif; font-size: 0.9rem; color: var(--gold); }
+  .banner-role { font-size: 0.72rem; color: rgba(240,232,216,0.35); margin-top: 0.2rem; }
+  .banner-logout { font-size: 0.72rem; color: rgba(240,232,216,0.25); cursor: pointer; transition: color 0.3s; background: none; border: none; }
+  .banner-logout:hover { color: rgba(255,80,80,0.6); }
+
+  .btn-full { width: 100%; margin-top: 0.3rem; }
+
+  /* Particles */
+  .particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .particle {
+    position: absolute; width: 1px; height: 1px;
+    background: var(--gold); border-radius: 50%;
+    animation: rise linear infinite; opacity: 0;
+  }
+
+  @keyframes rise {
+    0% { opacity: 0; transform: translateY(0) translateX(0); }
+    10% { opacity: 0.6; }
+    90% { opacity: 0.2; }
+    100% { opacity: 0; transform: translateY(-200px) translateX(20px); }
+  }
+
+  .ornament { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+  .ornament-line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(201,168,76,0.2), transparent); }
+  .ornament-symbol { color: var(--gold-dim); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">CONFESSIO</a>
+  <ul class="nav-links">
+    <li><a href="#how">كيف يعمل</a></li>
+    <li><a href="#roles">الأدوار</a></li>
+    <li><a href="#privacy">الخصوصية</a></li>
+    <li><a href="#" onclick="openModal(); return false;" id="nav-auth-btn">دخول</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="particles" id="particles"></div>
+  <div class="candle-wrap">
+    <div class="flame-glow"></div>
+    <div class="wick">
+      <div class="flame">
+        <div class="flame-outer"></div>
+        <div class="flame-inner"></div>
+      </div>
+    </div>
+    <div class="candle-body"></div>
+  </div>
+  <h1 class="hero-title">Confessio</h1>
+  <p class="hero-tagline">A place for what cannot be said</p>
+  <p class="hero-arabic">مكان لما لا يُقال</p>
+  <div class="cta-group">
+    <button class="btn-primary" onclick="openModal()">ابدأ التجربة</button>
+    <button class="btn-ghost" onclick="document.getElementById('how').scrollIntoView({behavior:'smooth'})">اكتشف المزيد</button>
+  </div>
+  <div class="scroll-hint">
+    <div class="scroll-line"></div>
+    <span>انزل</span>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<div class="how-section" id="how">
+  <div class="how-inner">
+    <p class="section-label">المنهجية</p>
+    <h2 class="section-title">كيف تعمل <span>المقصورة</span>؟</h2>
+    <div class="divider"></div>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-num">01</div>
+        <div class="step-icon">🎭</div>
+        <div class="step-title">اختر دورك</div>
+        <p class="step-desc">في كل جلسة تختار — هل تحمل شيئاً تريد إطلاقه، أم أنت من سيحمل ثقل الاستماع؟</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">02</div>
+        <div class="step-icon">🔮</div>
+        <div class="step-title">المطابقة السرية</div>
+        <p class="step-desc">النظام يجمعك بغريب في مكان ما. لا معلومات شخصية. رمز عشوائي يتجدد مع كل جلسة.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">03</div>
+        <div class="step-icon">🕯️</div>
+        <div class="step-title">الجلسة الطقسية</div>
+        <p class="step-desc">محادثة نصية أو صوتية. شمعة تذوب مع الوقت. ما يُقال هنا يبقى هنا فقط.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">04</div>
+        <div class="step-icon">🌊</div>
+        <div class="step-title">الانتهاء والمحو</div>
+        <p class="step-desc">تنطفئ الشمعة. تُحذف المحادثة نهائياً. ما بقي هو فقط ما شعرت به.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ROLES -->
+<section id="roles">
+  <p class="section-label">الأدوار</p>
+  <h2 class="section-title">كل جلسة — <span>اختيار</span></h2>
+  <div class="divider"></div>
+  <div class="roles-grid">
+    <div class="role-card">
+      <span class="role-symbol">🙏</span>
+      <div class="role-name">The Confessor</div>
+      <div class="role-arabic">المُعترِف</div>
+      <p class="role-desc">تحمل شيئاً لم تقله لأحد. ذنب، سر، خوف، قرار. هنا تُطلقه أمام شاهد بشري حقيقي.</p>
+      <ul class="role-rules">
+        <li>هوية مجهولة في الجلسة</li>
+        <li>لا حكم ولا عواقب</li>
+        <li>الحارس لا يعطي نصائح إلا إذا طُلب</li>
+        <li>المحادثة تُحذف عند الانتهاء</li>
+      </ul>
+    </div>
+    <div class="role-card">
+      <span class="role-symbol">🛡️</span>
+      <div class="role-name">The Guardian</div>
+      <div class="role-arabic">الحارس</div>
+      <p class="role-desc">تستمع. تسأل. لا تحكم. وجودك وحده هو الهدية. بروفيلك يحفظ سمعتك ونقاطك.</p>
+      <ul class="role-rules">
+        <li>بروفيل دائم مع نقاط وشارات</li>
+        <li>تقييم سري بالنجوم بعد كل جلسة</li>
+        <li>الحارس ذو التقييم العالي = جلسات أثقل</li>
+        <li>وضع الصمت — جملة واحدة في النهاية</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- QUOTE -->
+<div class="quote-section">
+  <div class="ornament">
+    <div class="ornament-line"></div>
+    <span class="ornament-symbol">✦</span>
+    <div class="ornament-line"></div>
+  </div>
+  <p class="quote-text">"الناس تفصح بسهولة لمن لن يروه مجدداً — لأن الحكم يموت مع المسافة"</p>
+  <p class="quote-author">مبدأ نفسي — Stranger on a Train Effect</p>
+</div>
+
+<!-- PRIVACY -->
+<div class="privacy-section" id="privacy">
+  <div class="privacy-inner">
+    <p class="section-label">الخصوصية</p>
+    <h2 class="section-title">لا نعرف <span>من أنت</span></h2>
+    <div class="divider"></div>
+    <div class="privacy-grid">
+      <div class="privacy-item">
+        <span class="privacy-icon">🎭</span>
+        <div class="privacy-title">اسم مجهول</div>
+        <p class="privacy-desc">اسم مستعار تختاره أنت. لا اسم حقيقي ولا بريد إلكتروني أبداً.</p>
+      </div>
+      <div class="privacy-item">
+        <span class="privacy-icon">🔥</span>
+        <div class="privacy-title">محو تلقائي</div>
+        <p class="privacy-desc">محتوى الجلسة يُحذف نهائياً. بروفيلك يبقى — محادثاتك لا.</p>
+      </div>
+      <div class="privacy-item">
+        <span class="privacy-icon">🎙️</span>
+        <div class="privacy-title">صوت مباشر</div>
+        <p class="privacy-desc">WebRTC — الصوت يمر مباشرة بينكما. لا يمر بسيرفرنا.</p>
+      </div>
+      <div class="privacy-item">
+        <span class="privacy-icon">🔒</span>
+        <div class="privacy-title">تشفير كامل</div>
+        <p class="privacy-desc">كل الاتصالات مشفرة. لا نقرأ ما تقوله ولا نستطيع.</p>
+      </div>
+      <div class="privacy-item">
+        <span class="privacy-icon">🌍</span>
+        <div class="privacy-title">بدون تتبع</div>
+        <p class="privacy-desc">لا كوكيز تتبع. لا تحليلات شخصية. لا بيانات تُباع.</p>
+      </div>
+      <div class="privacy-item">
+        <span class="privacy-icon">⏱️</span>
+        <div class="privacy-title">جلسة محدودة</div>
+        <p class="privacy-desc">15 أو 30 دقيقة. الحدود تعمّق الطقوس وتحمي من الإدمان.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section>
+  <p class="section-label">الميزات</p>
+  <h2 class="section-title">ما يجعل <span>Confessio</span> مختلفاً</h2>
+  <div class="divider"></div>
+  <div class="features-list">
+    <div class="feature-item">
+      <div class="feature-icon-wrap">⚖️</div>
+      <div class="feature-content">
+        <h4>نظام الرصيد</h4>
+        <p>استمع مرة لتكسب حق الاعتراف. التوازن يمنع الاستغلال ويبني مجتمعاً صحياً.</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon-wrap">📮</div>
+      <div class="feature-content">
+        <h4>الغفران المؤجل</h4>
+        <p>الحارس يكتب رسالة سرية تصل بعد 24 ساعة. لا تعرف متى تأتي — فقط أنها قادمة.</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon-wrap">🌊</div>
+      <div class="feature-content">
+        <h4>صدى الكون</h4>
+        <p>بعد الجلسة، جملة واحدة مجهولة تصلك من شخص ما في مكان ما. لست وحدك.</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon-wrap">🆘</div>
+      <div class="feature-content">
+        <h4>بروتوكول الأزمات</h4>
+        <p>كشف صامت للكلمات الخطيرة. الحارس يُنبَّه. الموارد تصل. الجلسة لا تتوقف.</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon-wrap">🏅</div>
+      <div class="feature-content">
+        <h4>شارات الحارس</h4>
+        <p>مكافآت على الاستماع والتوازن والصبر. بروفيلك يحفظ إنجازاتك عبر الجلسات.</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon-wrap">🌍</div>
+      <div class="feature-content">
+        <h4>خمس لغات</h4>
+        <p>عربي، فرنسي، إنجليزي، إسباني، ألماني. المطابقة تحترم لغتك دائماً.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+  <h2>أنت جاهز <span style="color:var(--gold)">للمقصورة؟</span></h2>
+  <p>اسم مستعار. كلمة مرور. لا شيء آخر.</p>
+  <div class="cta-group">
+    <button class="btn-primary" onclick="openModal()">ابدأ الآن — مجاناً</button>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-brand">🕯️ CONFESSIO</div>
+  <p class="footer-text">© 2025 Confessio · ما يُقال هنا يموت هنا</p>
+  <div class="footer-links">
+    <a href="#">الخصوصية</a>
+    <a href="#">الشروط</a>
+    <a href="https://github.com/amin14c/Confesio" target="_blank">GitHub</a>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════
+     MODAL — 3 خطوات
+═══════════════════════════════════ -->
+<div class="modal-overlay" id="modal" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+
+    <!-- خطوة ١: اختيار اللغة -->
+    <div id="step-lang">
+      <div class="modal-candle">🕯️</div>
+      <h3>CONFESSIO</h3>
+      <p class="modal-sub">اختر لغتك أولاً<br><span style="font-size:0.72rem;color:rgba(240,232,216,0.2)">Choose your language first</span></p>
+
+      <div class="step-indicator">
+        <div class="step-dot active" id="dot1"></div>
+        <div class="step-line"></div>
+        <div class="step-dot" id="dot2"></div>
+        <div class="step-line"></div>
+        <div class="step-dot" id="dot3"></div>
+      </div>
+
+      <div class="lang-grid">
+        <button class="lang-btn" onclick="selectLang('ar', 'العربية', this)">
+          <span class="lang-flag">🇩🇿</span>
+          <span class="lang-name-local">العربية</span>
+          <span class="lang-name-en">Arabic</span>
+        </button>
+        <button class="lang-btn" onclick="selectLang('fr', 'Français', this)">
+          <span class="lang-flag">🇫🇷</span>
+          <span class="lang-name-local">Français</span>
+          <span class="lang-name-en">French</span>
+        </button>
+        <button class="lang-btn" onclick="selectLang('en', 'English', this)">
+          <span class="lang-flag">🇬🇧</span>
+          <span class="lang-name-local">English</span>
+          <span class="lang-name-en">English</span>
+        </button>
+        <button class="lang-btn" onclick="selectLang('es', 'Español', this)">
+          <span class="lang-flag">🇪🇸</span>
+          <span class="lang-name-local">Español</span>
+          <span class="lang-name-en">Spanish</span>
+        </button>
+        <button class="lang-btn" onclick="selectLang('de', 'Deutsch', this)">
+          <span class="lang-flag">🇩🇪</span>
+          <span class="lang-name-local">Deutsch</span>
+          <span class="lang-name-en">German</span>
+        </button>
+        <button class="lang-btn" onclick="selectLang('ber', 'ⵜⴰⵎⴰⵣⵉⵖⵜ', this)">
+          <span class="lang-flag">☀️</span>
+          <span class="lang-name-local">ⵜⴰⵎⴰⵣⵉⵖⵜ</span>
+          <span class="lang-name-en">Tamazight</span>
+        </button>
+      </div>
+
+      <button class="btn-primary btn-full" id="lang-next-btn" onclick="goToAuthStep()" disabled style="opacity:0.4;cursor:not-allowed">
+        متابعة ←
+      </button>
+      <p class="modal-note">يمكنك تغيير اللغة لاحقاً من الإعدادات</p>
+    </div>
+
+    <!-- خطوة ٢: تسجيل الدخول / الإنشاء -->
+    <div id="step-auth" style="display:none">
+      <div class="modal-candle">🕯️</div>
+      <h3>CONFESSIO</h3>
+
+      <!-- إذا كان مسجلاً -->
+      <div class="logged-in-banner" id="logged-in-banner">
+        <div class="banner-row">
+          <div>
+            <div class="banner-name" id="banner-username"></div>
+            <div class="banner-role" id="banner-role"></div>
+          </div>
+          <button class="banner-logout" onclick="logout()">تسجيل خروج</button>
+        </div>
+      </div>
+
+      <div class="step-indicator">
+        <div class="step-dot done" id="dot1b"></div>
+        <div class="step-line"></div>
+        <div class="step-dot active" id="dot2b"></div>
+        <div class="step-line"></div>
+        <div class="step-dot" id="dot3b"></div>
+      </div>
+
+      <!-- اختيار اللغة المختارة -->
+      <div class="session-badge" id="selected-lang-badge">🌍 العربية</div>
+
+      <div class="tab-group" id="auth-tabs">
+        <button class="tab active" onclick="switchTab('login')">دخول</button>
+        <button class="tab" onclick="switchTab('register')">حساب جديد</button>
+      </div>
+
+      <!-- فورم الدخول -->
+      <div id="login-form">
+        <div class="form-field">
+          <label>اسم المستخدم</label>
+          <input type="text" id="login-username" placeholder="اسمك المستعار..." autocomplete="username">
+          <p class="input-hint">الاسم الذي اخترته عند التسجيل</p>
+        </div>
+        <div class="form-field">
+          <label>كلمة المرور</label>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+
+        <div class="remember-row">
+          <div class="custom-check" id="remember-check" onclick="toggleRemember()"></div>
+          <label class="remember-label" onclick="toggleRemember()">تذكرني على هذا الجهاز</label>
+        </div>
+
+        <button class="btn-primary btn-full" onclick="doLogin()">دخول إلى المقصورة</button>
+        <p class="modal-note">لا بريد إلكتروني. اسمك المستعار هو هويتك.</p>
+      </div>
+
+      <!-- فورم الإنشاء -->
+      <div id="register-form" style="display:none">
+        <div class="form-field">
+          <label>اسم مستعار</label>
+          <div class="username-row">
+            <input type="text" id="reg-username" placeholder="اختر اسماً مستعاراً..." oninput="checkUsername()" autocomplete="off" maxlength="20">
+            <span class="avail-badge checking" id="avail-badge">...</span>
+          </div>
+          <p class="input-hint" id="username-hint">3-20 حرف، بدون مسافات. هذا اسمك الدائم في Confessio.</p>
+        </div>
+        <div class="form-field">
+          <label>كلمة المرور</label>
+          <input type="password" id="reg-password" placeholder="8 أحرف minimum" oninput="checkPassword()" autocomplete="new-password">
+          <p class="input-hint" id="pass-hint">أدخل كلمة مرور قوية</p>
+        </div>
+        <div class="form-field">
+          <label>تأكيد كلمة المرور</label>
+          <input type="password" id="reg-confirm" placeholder="••••••••" oninput="checkConfirm()" autocomplete="new-password">
+          <p class="input-hint" id="confirm-hint"></p>
+        </div>
+
+        <div class="remember-row">
+          <div class="custom-check checked" id="remember-reg-check" onclick="toggleRememberReg()"></div>
+          <label class="remember-label" onclick="toggleRememberReg()">تذكرني تلقائياً بعد التسجيل</label>
+        </div>
+
+        <button class="btn-primary btn-full" onclick="doRegister()">إنشاء حسابي</button>
+        <p class="modal-note">اسمك المستعار يبقى خاصاً بك. لا أحد يرى اسمك الحقيقي.</p>
+      </div>
+
+      <p style="text-align:center; margin-top:1rem">
+        <span style="font-size:0.72rem; color:rgba(240,232,216,0.2); cursor:pointer" onclick="goToLangStep()">← تغيير اللغة</span>
+      </p>
+    </div>
+
+    <!-- خطوة ٣: تأكيد الحساب الجديد -->
+    <div id="step-confirm" style="display:none">
+      <div class="modal-candle">🎉</div>
+      <h3>مرحباً بك</h3>
+      <p class="modal-sub">حسابك جاهز. احتفظ بهذه المعلومات.</p>
+
+      <div class="step-indicator">
+        <div class="step-dot done"></div>
+        <div class="step-line"></div>
+        <div class="step-dot done"></div>
+        <div class="step-line"></div>
+        <div class="step-dot active"></div>
+      </div>
+
+      <div class="uuid-card">
+        <div class="uuid-label">اسمك المستعار</div>
+        <div class="uuid-value" id="confirm-username" style="font-size:1.1rem; font-family:'Cinzel',serif; color:var(--gold)"></div>
+      </div>
+
+      <div class="uuid-card">
+        <div class="uuid-label">معرّفك الداخلي (للاسترجاع)</div>
+        <div class="uuid-value" id="confirm-uuid"></div>
+      </div>
+
+      <div class="uuid-warning">
+        ⚠️ احفظ هذا المعرّف في مكان آمن. إذا نسيت كلمة مرورك، هذا المعرّف هو طريقة الاسترجاع الوحيدة.
+      </div>
+
+      <button class="btn-ghost btn-full" style="margin-bottom:0.5rem" onclick="copyUUID()">📋 نسخ المعرّف</button>
+      <button class="btn-primary btn-full" onclick="finishSetup()">دخول إلى المقصورة 🕯️</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ═══ State ═══
+  let selectedLang = null;
+  let rememberMe = false;
+  let rememberReg = true;
+  let usernameTimer = null;
+  let currentUUID = '';
+  let currentUsername = '';
+
+  // ═══ Saved session ═══
+  function checkSavedSession() {
+    const saved = localStorage.getItem('confessio_session');
+    if (saved) {
+      try {
+        const s = JSON.parse(saved);
+        currentUsername = s.username;
+        currentUUID = s.uuid;
+        document.getElementById('banner-username').textContent = '👤 ' + s.username;
+        document.getElementById('banner-role').textContent = s.lang ? '🌍 ' + s.lang : '';
+        document.getElementById('logged-in-banner').classList.add('show');
+        document.getElementById('auth-tabs').style.display = 'none';
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('register-form').style.display = 'none';
+        // Show enter button directly
+        const enterBtn = document.createElement('button');
+        enterBtn.className = 'btn-primary btn-full';
+        enterBtn.textContent = 'دخول مباشر إلى المقصورة 🕯️';
+        enterBtn.style.marginTop = '1rem';
+        enterBtn.onclick = finishSetup;
+        document.getElementById('step-auth').appendChild(enterBtn);
+        document.getElementById('nav-auth-btn').textContent = s.username;
+      } catch(e) {}
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('confessio_session');
+    location.reload();
+  }
+
+  // ═══ Particles ═══
+  function createParticles() {
+    const c = document.getElementById('particles');
+    for (let i = 0; i < 20; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.cssText = `left:${45+Math.random()*10}%;bottom:${30+Math.random()*20}%;animation-duration:${3+Math.random()*4}s;animation-delay:${Math.random()*4}s;`;
+      c.appendChild(p);
+    }
+  }
+  createParticles();
+
+  // ═══ Modal ═══
+  function openModal() {
+    document.getElementById('modal').classList.add('active');
+    showStep('lang');
+    checkSavedSession();
+  }
+
+  function closeModal() { document.getElementById('modal').classList.remove('active'); }
+
+  function closeModalOutside(e) {
+    if (e.target === document.getElementById('modal')) closeModal();
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  // ═══ Steps ═══
+  function showStep(step) {
+    document.getElementById('step-lang').style.display = step === 'lang' ? 'block' : 'none';
+    document.getElementById('step-auth').style.display = step === 'auth' ? 'block' : 'none';
+    document.getElementById('step-confirm').style.display = step === 'confirm' ? 'block' : 'none';
+  }
+
+  function goToLangStep() { showStep('lang'); }
+
+  function goToAuthStep() {
+    if (!selectedLang) return;
+    showStep('auth');
+    document.getElementById('selected-lang-badge').textContent = getLangFlag(selectedLang) + ' ' + getLangName(selectedLang);
+  }
+
+  // ═══ Language ═══
+  const langs = {
+    ar: { name: 'العربية', flag: '🇩🇿' },
+    fr: { name: 'Français', flag: '🇫🇷' },
+    en: { name: 'English', flag: '🇬🇧' },
+    es: { name: 'Español', flag: '🇪🇸' },
+    de: { name: 'Deutsch', flag: '🇩🇪' },
+    ber: { name: 'ⵜⴰⵎⴰⵣⵉⵖⵜ', flag: '☀️' }
+  };
+
+  function getLangName(code) { return langs[code]?.name || code; }
+  function getLangFlag(code) { return langs[code]?.flag || '🌍'; }
+
+  function selectLang(code, name, btn) {
+    selectedLang = code;
+    document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    const nextBtn = document.getElementById('lang-next-btn');
+    nextBtn.disabled = false;
+    nextBtn.style.opacity = '1';
+    nextBtn.style.cursor = 'pointer';
+  }
+
+  // ═══ Tabs ═══
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+    document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+  }
+
+  // ═══ Remember Me ═══
+  function toggleRemember() {
+    rememberMe = !rememberMe;
+    const el = document.getElementById('remember-check');
+    el.classList.toggle('checked', rememberMe);
+    if (rememberMe) el.textContent = ''; else el.textContent = '';
+  }
+
+  function toggleRememberReg() {
+    rememberReg = !rememberReg;
+    const el = document.getElementById('remember-reg-check');
+    el.classList.toggle('checked', rememberReg);
+  }
+
+  // ═══ Username check ═══
+  function checkUsername() {
+    clearTimeout(usernameTimer);
+    const val = document.getElementById('reg-username').value.trim();
+    const badge = document.getElementById('avail-badge');
+    const hint = document.getElementById('username-hint');
+
+    if (val.length < 3) {
+      badge.className = 'avail-badge checking';
+      badge.textContent = '...';
+      hint.textContent = '3-20 حرف، بدون مسافات.';
+      hint.className = 'input-hint';
+      return;
+    }
+
+    if (/\s/.test(val)) {
+      badge.className = 'avail-badge taken';
+      badge.textContent = '✗ خطأ';
+      hint.textContent = 'لا مسافات مسموحة في الاسم';
+      hint.className = 'input-hint warn';
+      return;
+    }
+
+    badge.className = 'avail-badge checking';
+    badge.textContent = '⏳';
+    hint.textContent = 'نتحقق من التوفر...';
+    hint.className = 'input-hint';
+
+    usernameTimer = setTimeout(() => {
+      // Simulate check — in production connects to /auth/check-username
+      const taken = ['admin', 'guardian', 'confessor', 'confessio', 'test'].includes(val.toLowerCase());
+      if (taken) {
+        badge.className = 'avail-badge taken';
+        badge.textContent = '✗ محجوز';
+        hint.textContent = 'هذا الاسم محجوز، جرّب اسماً آخر';
+        hint.className = 'input-hint warn';
+      } else {
+        badge.className = 'avail-badge available';
+        badge.textContent = '✓ متاح';
+        hint.textContent = 'رائع! هذا الاسم متاح لك.';
+        hint.className = 'input-hint ok';
+      }
+    }, 600);
+  }
+
+  function checkPassword() {
+    const val = document.getElementById('reg-password').value;
+    const hint = document.getElementById('pass-hint');
+    if (val.length === 0) { hint.textContent = ''; hint.className = 'input-hint'; return; }
+    if (val.length < 8) {
+      hint.textContent = `${val.length}/8 أحرف — قصيرة جداً`;
+      hint.className = 'input-hint warn';
+    } else {
+      hint.textContent = '✓ كلمة مرور قوية';
+      hint.className = 'input-hint ok';
+    }
+    checkConfirm();
+  }
+
+  function checkConfirm() {
+    const p = document.getElementById('reg-password').value;
+    const c = document.getElementById('reg-confirm').value;
+    const hint = document.getElementById('confirm-hint');
+    if (!c) { hint.textContent = ''; return; }
+    if (p === c) { hint.textContent = '✓ كلمتا المرور متطابقتان'; hint.className = 'input-hint ok'; }
+    else { hint.textContent = 'كلمتا المرور غير متطابقتان'; hint.className = 'input-hint warn'; }
+  }
+
+  // ═══ Login ═══
+  function doLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    if (!username || !password) {
+      alert('يرجى ملء جميع الحقول');
+      return;
+    }
+
+    // Simulate login — in production: POST /auth/login
+    currentUsername = username;
+    currentUUID = generateUUID();
+
+    if (rememberMe) {
+      localStorage.setItem('confessio_session', JSON.stringify({
+        username, uuid: currentUUID, lang: selectedLang
+      }));
+    }
+
+    closeModal();
+    document.getElementById('nav-auth-btn').textContent = username;
+    showWelcomeToast(username);
+  }
+
+  // ═══ Register ═══
+  function doRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const confirm = document.getElementById('reg-confirm').value;
+
+    if (!username || username.length < 3) { alert('الاسم المستعار قصير جداً'); return; }
+    if (password.length < 8) { alert('كلمة المرور قصيرة جداً'); return; }
+    if (password !== confirm) { alert('كلمتا المرور غير متطابقتان'); return; }
+    if (document.getElementById('avail-badge').classList.contains('taken')) { alert('هذا الاسم محجوز'); return; }
+
+    currentUsername = username;
+    currentUUID = generateUUID();
+
+    document.getElementById('confirm-username').textContent = username;
+    document.getElementById('confirm-uuid').textContent = currentUUID;
+
+    if (rememberReg) {
+      localStorage.setItem('confessio_session', JSON.stringify({
+        username, uuid: currentUUID, lang: selectedLang
+      }));
+    }
+
+    showStep('confirm');
+  }
+
+  function copyUUID() {
+    navigator.clipboard.writeText(currentUUID).then(() => {
+      const btn = event.target;
+      btn.textContent = '✅ تم النسخ';
+      setTimeout(() => btn.textContent = '📋 نسخ المعرّف', 2000);
+    });
+  }
+
+  function finishSetup() {
+    closeModal();
+    document.getElementById('nav-auth-btn').textContent = currentUsername;
+    showWelcomeToast(currentUsername);
+  }
+
+  // ═══ Toast ═══
+  function showWelcomeToast(name) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position:fixed; bottom:2rem; left:50%; transform:translateX(-50%);
+      background:var(--coal); border:1px solid rgba(201,168,76,0.3);
+      border-radius:3px; padding:0.8rem 1.5rem;
+      font-size:0.85rem; color:var(--gold);
+      z-index:9999; animation:modalIn 0.3s ease;
+      white-space:nowrap;
+    `;
+    toast.textContent = `🕯️ مرحباً ${name} — المقصورة في انتظارك`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  }
+
+  // ═══ Utils ═══
+  function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // ═══ Scroll animations ═══
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.style.opacity = '1';
+        e.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.step-card, .role-card, .privacy-item, .feature-item').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    observer.observe(el);
+  });
+</script>
+</body>
+</html>
