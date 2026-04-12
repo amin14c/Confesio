@@ -22,8 +22,10 @@ service cloud.firestore {
     // ===============================================================
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen']) &&
+      return hasOnlyAllowedFields(['uid', 'createdAt', 'credits', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen']) &&
              data.uid == request.auth.uid &&
+             data.createdAt is number &&
+             data.credits is number && data.credits >= 0 &&
              data.completed_sessions is number && data.completed_sessions >= 0 &&
              data.confessions is number && data.confessions >= 0 &&
              data.guardian_sessions is number && data.guardian_sessions >= 0 &&

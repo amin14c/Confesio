@@ -6,6 +6,7 @@ import { auth, db } from '../firebase';
 interface UserStats {
   uid: string;
   createdAt: number;
+  credits: number;
   completed_sessions: number;
   confessions: number;
   guardian_sessions: number;
@@ -40,6 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const initialUser: UserStats = {
               uid: firebaseUser.uid,
               createdAt: Date.now(),
+              credits: 0,
               completed_sessions: 0,
               confessions: 0,
               guardian_sessions: 0,

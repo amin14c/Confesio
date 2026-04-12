@@ -6,13 +6,15 @@
       "type": "object",
       "properties": {
         "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "createdAt": { "type": "number", "description": "Timestamp of creation" },
+        "credits": { "type": "number", "description": "Gamification points" },
         "completed_sessions": { "type": "number" },
         "confessions": { "type": "number" },
         "guardian_sessions": { "type": "number" },
         "avg_rating": { "type": "number" },
         "lastSeen": { "type": "number" }
       },
-      "required": ["uid", "completed_sessions", "confessions", "guardian_sessions", "avg_rating", "lastSeen"]
+      "required": ["uid", "createdAt", "credits", "completed_sessions", "confessions", "guardian_sessions", "avg_rating", "lastSeen"]
     },
     "QueueEntry": {
       "title": "QueueEntry",

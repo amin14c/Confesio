@@ -8,7 +8,7 @@ import { db } from './firebase';
 import { collection, doc, setDoc, getDocs, query, where, onSnapshot, deleteDoc, addDoc, orderBy, updateDoc, limit } from 'firebase/firestore';
 
 type AppLanguage = 'en' | 'fr' | 'ar';
-type Step = 'app-lang' | 'role-select' | 'comm-lang' | 'ritual' | 'chat' | 'rating';
+type Step = 'app-lang' | 'role-select' | 'comm-lang' | 'ritual' | 'chat' | 'rating' | 'reward';
 type Role = 'confessor' | 'guardian' | null;
 
 interface Message {
@@ -53,7 +53,10 @@ const translations = {
     queueTimeout: 'Wait time exceeded. Please try again.',
     crisisAlert: '⚠️ Your partner seems to be in a crisis — please be fully present and listen carefully.',
     supportResources: 'If you need immediate help, please reach out to: Algeria 3548, International befrienders.org',
-    submitRating: 'Submit Rating & Return'
+    submitRating: 'Submit Rating & Return',
+    rewardTitle: 'Points Earned!',
+    rewardDesc: 'Thank you for being a compassionate guardian. You earned',
+    points: 'points',
   },
   fr: {
     appLangTitle: "Langue de l'application",
@@ -88,7 +91,10 @@ const translations = {
     queueTimeout: 'Temps d\'attente dépassé. Veuillez réessayer.',
     crisisAlert: '⚠️ Votre partenaire semble traverser une crise — soyez pleinement présent et écoutez attentivement.',
     supportResources: 'Si vous avez besoin d\'aide immédiate, contactez : Algérie 3548, International befrienders.org',
-    submitRating: 'Soumettre la note et retourner'
+    submitRating: 'Soumettre la note et retourner',
+    rewardTitle: 'Points Gagnés !',
+    rewardDesc: 'Merci d\'être un gardien compatissant. Vous avez gagné',
+    points: 'points',
   },
   ar: {
     appLangTitle: 'اختر لغة التطبيق',
@@ -123,7 +129,10 @@ const translations = {
     queueTimeout: 'انتهى وقت الانتظار. يرجى المحاولة مرة أخرى.',
     crisisAlert: '⚠️ يبدو أن شريكك يمر بأزمة — كن حاضراً بشكل كامل واستمع بعناية.',
     supportResources: 'إذا كنت بحاجة لمساعدة فورية، يرجى التواصل مع: الجزائر 3548، دولي befrienders.org',
-    submitRating: 'إرسال التقييم والعودة'
+    submitRating: 'إرسال التقييم والعودة',
+    rewardTitle: 'لقد كسبت نقاطاً!',
+    rewardDesc: 'شكراً لكونك حارساً متعاطفاً. لقد كسبت',
+    points: 'نقطة',
   }
 };
 
@@ -150,6 +159,8 @@ export default function App() {
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [queueId, setQueueId] = useState<string | null>(null);
+
+  const [earnedPoints, setEarnedPoints] = useState(0);
 
   const t = translations[appLang];
   const isRtl = appLang === 'ar';
@@ -334,19 +345,34 @@ export default function App() {
   };
 
   const submitRatingAndReset = async () => {
+    let points = 0;
     if (rating > 0 && user) {
-      // In a real app, we'd update the partner's rating here via a secure Cloud Function.
-      // For now, we'll just update our own completed sessions count.
+      const isGuardian = role === 'guardian';
+      // Guardians get 10 base points + up to 10 points based on self-reflection/rating
+      points = isGuardian ? 10 + (rating * 2) : 0;
+
       await updateDoc(doc(db, 'users', user.uid), {
         completed_sessions: user.completed_sessions + 1,
-        [role === 'confessor' ? 'confessions' : 'guardian_sessions']: user[role === 'confessor' ? 'confessions' : 'guardian_sessions'] + 1
+        [isGuardian ? 'guardian_sessions' : 'confessions']: user[isGuardian ? 'guardian_sessions' : 'confessions'] + 1,
+        credits: (user.credits || 0) + points
       });
     }
+    
+    if (points > 0) {
+      setEarnedPoints(points);
+      setStep('reward');
+    } else {
+      resetToStart();
+    }
+  };
+
+  const resetToStart = () => {
     setStep('role-select');
     setRole(null);
     setMessages([]);
     setRating(0);
     setRoomId(null);
+    setEarnedPoints(0);
   };
 
   useEffect(() => {
@@ -672,6 +698,33 @@ export default function App() {
                 className="w-full py-3 rounded-full bg-white text-black font-medium disabled:opacity-20 disabled:cursor-not-allowed transition-all hover:bg-gray-200"
               >
                 {t.submitRating}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* STEP 6: REWARD */}
+        {step === 'reward' && (
+          <motion.div 
+            key="reward"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full text-center"
+          >
+            <div className="w-full bg-emerald-900/20 border border-emerald-500/30 rounded-3xl p-10 backdrop-blur-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-emerald-500/10 to-transparent pointer-events-none" />
+              <Shield className="w-20 h-20 text-emerald-400 mx-auto mb-6 drop-shadow-[0_0_15px_rgba(52,211,153,0.5)]" />
+              <h2 className="text-3xl font-bold text-white mb-4">{t.rewardTitle}</h2>
+              <p className="text-gray-400 mb-6 text-lg">{t.rewardDesc}</p>
+              <div className="text-5xl font-black text-emerald-400 mb-10 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">
+                +{earnedPoints} <span className="text-2xl text-emerald-500/80">{t.points}</span>
+              </div>
+              
+              <button 
+                onClick={resetToStart}
+                className="w-full py-4 rounded-full bg-emerald-500 text-black font-bold text-lg transition-all hover:bg-emerald-400 hover:shadow-[0_0_20px_rgba(52,211,153,0.4)]"
+              >
+                {t.continue}
               </button>
             </div>
           </motion.div>

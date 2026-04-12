@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
+import { Shield } from 'lucide-react';
 
 export const AuthScreen = () => {
   const { login } = useAuth();
@@ -28,9 +29,17 @@ export const AuthScreen = () => {
         </div>
 
         <div className="bg-[#0a0a0a] border border-gray-800/50 p-8 rounded-2xl shadow-2xl text-center">
-          <p className="text-gray-400 mb-8 leading-relaxed">
+          <p className="text-gray-400 mb-6 leading-relaxed">
             ستدخل الآن بهوية مجهولة تماماً. لا نطلب بريداً إلكترونياً، ولا اسماً، ولا أي معلومات شخصية.
           </p>
+          
+          <div className="mb-8 p-4 bg-emerald-900/10 border border-emerald-500/20 rounded-xl text-emerald-400/90 text-sm text-right flex items-start gap-3">
+            <Shield className="w-5 h-5 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              <strong className="text-emerald-500 block mb-1">تنبيه للحراس (المستمعين):</strong>
+              إذا أردت التطوع كحارس، ستكسب نقاطاً ومكافآت في رصيدك عن كل جلسة استماع تدخلها وتكتمل بنجاح!
+            </p>
+          </div>
           
           <button 
             onClick={handleEnter}
