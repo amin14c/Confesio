@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff, UserCircle } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
 import { useAuth } from './hooks/useAuth';
 import { AuthScreen } from './components/AuthScreen';
 import { AccountDashboard } from './components/AccountDashboard';
+import { db } from './firebase';
+import { collection, doc, setDoc, getDocs, query, where, onSnapshot, deleteDoc, addDoc, orderBy, updateDoc, limit } from 'firebase/firestore';
 
 type AppLanguage = 'en' | 'fr' | 'ar';
 type Step = 'app-lang' | 'role-select' | 'comm-lang' | 'ritual' | 'chat' | 'rating';
@@ -42,8 +43,6 @@ const translations = {
     rateGuardian: "How do you rate the guardian's empathy?",
     rateConfessor: 'How do you rate your experience as a guardian?',
     returnStart: 'Return to start',
-    simulatedGuardianMsg: 'Hello.. are you there? I have something heavy I want to talk about.',
-    simulatedConfessorMsg: 'I am listening. Take your time, this is a safe space.',
     startAudioCall: 'Start Audio Call',
     calling: 'Calling...',
     activeCall: 'Audio Call Active',
@@ -54,7 +53,6 @@ const translations = {
     queueTimeout: 'Wait time exceeded. Please try again.',
     crisisAlert: '⚠️ Your partner seems to be in a crisis — please be fully present and listen carefully.',
     supportResources: 'If you need immediate help, please reach out to: Algeria 3548, International befrienders.org',
-    guardianRatingMsg: 'Your cumulative guardian rating is: ',
     submitRating: 'Submit Rating & Return'
   },
   fr: {
@@ -80,8 +78,6 @@ const translations = {
     rateGuardian: "Comment évaluez-vous l'empathie du gardien ?",
     rateConfessor: 'Comment évaluez-vous votre expérience en tant que gardien ?',
     returnStart: 'Retour au début',
-    simulatedGuardianMsg: 'Bonjour.. êtes-vous là ? J\'ai quelque chose de lourd dont je veux parler.',
-    simulatedConfessorMsg: 'Je vous écoute. Prenez votre temps, c\'est un espace sûr.',
     startAudioCall: 'Démarrer l\'appel audio',
     calling: 'Appel en cours...',
     activeCall: 'Appel audio actif',
@@ -92,7 +88,6 @@ const translations = {
     queueTimeout: 'Temps d\'attente dépassé. Veuillez réessayer.',
     crisisAlert: '⚠️ Votre partenaire semble traverser une crise — soyez pleinement présent et écoutez attentivement.',
     supportResources: 'Si vous avez besoin d\'aide immédiate, contactez : Algérie 3548, International befrienders.org',
-    guardianRatingMsg: 'Votre note globale de gardien est : ',
     submitRating: 'Soumettre la note et retourner'
   },
   ar: {
@@ -118,8 +113,6 @@ const translations = {
     rateGuardian: 'كيف تقيم تعاطف الحارس؟',
     rateConfessor: 'كيف تقيم تجربتك كحارس؟',
     returnStart: 'العودة للبداية',
-    simulatedGuardianMsg: 'مرحباً.. هل أنت هنا؟ لدي شيء ثقيل أود التحدث عنه.',
-    simulatedConfessorMsg: 'أنا أسمعك. خذ وقتك، هذا المكان آمن.',
     startAudioCall: 'بدء مكالمة صوتية',
     calling: 'يتصل...',
     activeCall: 'مكالمة صوتية نشطة',
@@ -130,7 +123,6 @@ const translations = {
     queueTimeout: 'انتهى وقت الانتظار. يرجى المحاولة مرة أخرى.',
     crisisAlert: '⚠️ يبدو أن شريكك يمر بأزمة — كن حاضراً بشكل كامل واستمع بعناية.',
     supportResources: 'إذا كنت بحاجة لمساعدة فورية، يرجى التواصل مع: الجزائر 3548، دولي befrienders.org',
-    guardianRatingMsg: 'متوسط تقييمك التراكمي كحارس هو: ',
     submitRating: 'إرسال التقييم والعودة'
   }
 };
@@ -144,7 +136,7 @@ const communicationLanguages = [
 ];
 
 export default function App() {
-  const { user, token } = useAuth();
+  const { user, loading } = useAuth();
   const [showDashboard, setShowDashboard] = useState(false);
   const [appLang, setAppLang] = useState<AppLanguage>('en');
   const [step, setStep] = useState<Step>('app-lang');
@@ -153,33 +145,14 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [rating, setRating] = useState(0);
-  const [callState, setCallState] = useState<'idle' | 'calling' | 'active'>('idle');
-  const [isMuted, setIsMuted] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
   const [waitingTime, setWaitingTime] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [roomId, setRoomId] = useState<string | null>(null);
-  const roomIdRef = useRef<string | null>(null);
-  const [turnConfig, setTurnConfig] = useState<RTCConfiguration | null>(null);
-  const [guardianRating, setGuardianRating] = useState<number | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [queueId, setQueueId] = useState<string | null>(null);
 
   const t = translations[appLang];
   const isRtl = appLang === 'ar';
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (callState === 'active') {
-      interval = setInterval(() => setCallDuration(d => d + 1), 1000);
-    } else {
-      setCallDuration(0);
-    }
-    return () => clearInterval(interval);
-  }, [callState]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -190,205 +163,134 @@ export default function App() {
     return () => clearInterval(interval);
   }, [step]);
 
+  // Matchmaking Logic
   useEffect(() => {
-    roomIdRef.current = roomId;
-  }, [roomId]);
+    if (step !== 'ritual' || !user || !role) return;
 
-  useEffect(() => {
-    if (!token) return;
-    const apiUrl = import.meta.env.VITE_API_URL || '';
-    socketRef.current = io(apiUrl, {
-      auth: { token }
-    });
+    let unsubRooms: () => void;
+    let matchInterval: NodeJS.Timeout;
 
-    socketRef.current.on('matched', ({ roomId: newRoomId, turnConfig: newTurnConfig }) => {
-      setRoomId(newRoomId);
-      if (newTurnConfig) setTurnConfig(newTurnConfig);
-      setStep('chat');
-    });
+    const startMatchmaking = async () => {
+      // 1. Create a queue entry
+      const newQueueId = user.uid;
+      setQueueId(newQueueId);
+      await setDoc(doc(db, 'queues', newQueueId), {
+        uid: user.uid,
+        role,
+        lang: commLang,
+        joinedAt: Date.now()
+      });
 
-    socketRef.current.on('receive_message', ({ text, role }) => {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        text,
-        sender: 'other',
-        timestamp: new Date()
-      }]);
-    });
+      // 2. Listen for rooms where I am a participant
+      const roomsQuery = query(
+        collection(db, 'rooms'),
+        where(role === 'confessor' ? 'confessorId' : 'guardianId', '==', user.uid),
+        where('status', '==', 'active')
+      );
 
-    socketRef.current.on('crisis_alert', ({ message }) => {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        text: t.crisisAlert,
-        sender: 'other',
-        timestamp: new Date(),
-        isSystem: true
-      }]);
-    });
+      unsubRooms = onSnapshot(roomsQuery, (snapshot) => {
+        if (!snapshot.empty) {
+          const roomDoc = snapshot.docs[0];
+          setRoomId(roomDoc.id);
+          setStep('chat');
+          // Clean up my queue entry
+          deleteDoc(doc(db, 'queues', newQueueId)).catch(() => {});
+        }
+      });
 
-    socketRef.current.on('support_resources', ({ message }) => {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        text: t.supportResources,
-        sender: 'other',
-        timestamp: new Date(),
-        isSystem: true
-      }]);
-    });
-
-    socketRef.current.on('guardian_rating_update', ({ averageRating }) => {
-      setGuardianRating(averageRating);
-    });
-
-    const handlePartnerLeft = () => {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        text: t.partnerLeft,
-        sender: 'other',
-        timestamp: new Date(),
-        isSystem: true
-      }]);
-      cleanupCall();
+      // 3. If I am a confessor, actively look for a guardian
+      if (role === 'confessor') {
+        matchInterval = setInterval(async () => {
+          const q = query(
+            collection(db, 'queues'),
+            where('role', '==', 'guardian'),
+            where('lang', '==', commLang),
+            orderBy('joinedAt', 'asc'),
+            limit(1)
+          );
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const guardianDoc = snap.docs[0];
+            const guardianId = guardianDoc.data().uid;
+            
+            // Create a room
+            const newRoomRef = doc(collection(db, 'rooms'));
+            await setDoc(newRoomRef, {
+              confessorId: user.uid,
+              guardianId: guardianId,
+              lang: commLang,
+              status: 'active',
+              createdAt: Date.now()
+            });
+            
+            // Delete the guardian's queue entry
+            deleteDoc(doc(db, 'queues', guardianId)).catch(() => {});
+          }
+        }, 3000);
+      }
     };
 
-    socketRef.current.on('partner_left', handlePartnerLeft);
-    socketRef.current.on('partner_disconnected', handlePartnerLeft);
+    startMatchmaking();
 
-    socketRef.current.on('queue_timeout', () => {
+    // Timeout after 5 minutes
+    const timeout = setTimeout(() => {
+      cancelQueue();
       alert(t.queueTimeout);
-      setStep('role-select');
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (unsubRooms) unsubRooms();
+      if (matchInterval) clearInterval(matchInterval);
+      clearTimeout(timeout);
+    };
+  }, [step, user, role, commLang]);
+
+  // Chat Logic
+  useEffect(() => {
+    if (step !== 'chat' || !roomId || !user) return;
+
+    const messagesQuery = query(
+      collection(db, `rooms/${roomId}/messages`),
+      orderBy('timestamp', 'asc')
+    );
+
+    const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
+      const newMessages: Message[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        newMessages.push({
+          id: doc.id,
+          text: data.text,
+          sender: data.senderId === user.uid ? 'me' : 'other',
+          timestamp: new Date(data.timestamp)
+        });
+      });
+      setMessages(newMessages);
     });
 
-    // WebRTC Signaling
-    socketRef.current.on('webrtc_offer', async ({ offer }) => {
-      await setupWebRTC();
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerConnectionRef.current.createAnswer();
-        await peerConnectionRef.current.setLocalDescription(answer);
-        socketRef.current?.emit('webrtc_answer', { roomId: roomIdRef.current, answer });
-        setCallState('active');
+    const roomRef = doc(db, 'rooms', roomId);
+    const unsubRoom = onSnapshot(roomRef, (docSnap) => {
+      if (docSnap.exists() && docSnap.data().status === 'ended') {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          text: t.partnerLeft,
+          sender: 'other',
+          timestamp: new Date(),
+          isSystem: true
+        }]);
+        setTimeout(() => setStep('rating'), 3000);
       }
-    });
-
-    socketRef.current.on('webrtc_answer', async ({ answer }) => {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        setCallState('active');
-      }
-    });
-
-    socketRef.current.on('webrtc_ice_candidate', async ({ candidate }) => {
-      if (peerConnectionRef.current && candidate) {
-        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-      }
-    });
-
-    socketRef.current.on('call_ended', () => {
-      cleanupCall();
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        text: t.callEnded,
-        sender: 'other',
-        timestamp: new Date(),
-        isSystem: true
-      }]);
     });
 
     return () => {
-      socketRef.current?.disconnect();
-      cleanupCall();
+      unsubMessages();
+      unsubRoom();
     };
-  }, []); // Empty dependency array to prevent socket reconnection
-
-  const setupWebRTC = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = stream;
-      
-      const pc = new RTCPeerConnection(turnConfig || {
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
-      peerConnectionRef.current = pc;
-
-      stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socketRef.current?.emit('webrtc_ice_candidate', { roomId: roomIdRef.current, candidate: event.candidate });
-        }
-      };
-
-      pc.ontrack = (event) => {
-        if (!remoteAudioRef.current) {
-          const audio = new Audio();
-          audio.autoplay = true;
-          remoteAudioRef.current = audio;
-        }
-        remoteAudioRef.current.srcObject = event.streams[0];
-      };
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-    }
-  };
-
-  const cleanupCall = () => {
-    setCallState('idle');
-    setCallDuration(0);
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-      localStreamRef.current = null;
-    }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-    }
-  };
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const initiateCall = async () => {
-    setCallState('calling');
-    await setupWebRTC();
-    if (peerConnectionRef.current) {
-      const offer = await peerConnectionRef.current.createOffer();
-      await peerConnectionRef.current.setLocalDescription(offer);
-      socketRef.current?.emit('webrtc_offer', { roomId: roomIdRef.current, offer });
-    }
-  };
-
-  const endCall = () => {
-    socketRef.current?.emit('end_call', { roomId: roomIdRef.current });
-    cleanupCall();
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      text: `${t.callEnded} (${formatTime(callDuration)})`,
-      sender: 'me',
-      timestamp: new Date(),
-      isSystem: true
-    }]);
-  };
-
-  const toggleMute = () => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
-    }
-  };
+  }, [step, roomId, user]);
 
   const handleAppLangSelect = (lang: AppLanguage) => {
     setAppLang(lang);
-    setCommLang(lang); // Default comm lang to app lang
+    setCommLang(lang);
     setStep('role-select');
   };
 
@@ -399,42 +301,45 @@ export default function App() {
 
   const startRitual = () => {
     setStep('ritual');
-    socketRef.current?.emit('join_queue', { role, lang: commLang });
   };
 
-  const cancelQueue = () => {
-    socketRef.current?.emit('leave_queue', { role, lang: commLang });
+  const cancelQueue = async () => {
+    if (queueId) {
+      await deleteDoc(doc(db, 'queues', queueId)).catch(() => {});
+      setQueueId(null);
+    }
     setStep('role-select');
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !roomId || !user) return;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: inputText,
-      sender: 'me',
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, newMessage]);
-    socketRef.current?.emit('send_message', { roomId, text: inputText });
+    const text = inputText;
     setInputText('');
+
+    await addDoc(collection(db, `rooms/${roomId}/messages`), {
+      text,
+      senderId: user.uid,
+      role: role,
+      timestamp: Date.now()
+    });
   };
 
-  const endSession = () => {
-    socketRef.current?.emit('leave_session', { roomId: roomIdRef.current });
-    cleanupCall();
+  const endSession = async () => {
+    if (roomId) {
+      await updateDoc(doc(db, 'rooms', roomId), { status: 'ended' });
+    }
     setStep('rating');
   };
 
-  const submitRatingAndReset = () => {
-    if (rating > 0 && roomIdRef.current) {
-      socketRef.current?.emit('submit_rating', { 
-        roomId: roomIdRef.current, 
-        rating, 
-        reviewerRole: role 
+  const submitRatingAndReset = async () => {
+    if (rating > 0 && user) {
+      // In a real app, we'd update the partner's rating here via a secure Cloud Function.
+      // For now, we'll just update our own completed sessions count.
+      await updateDoc(doc(db, 'users', user.uid), {
+        completed_sessions: user.completed_sessions + 1,
+        [role === 'confessor' ? 'confessions' : 'guardian_sessions']: user[role === 'confessor' ? 'confessions' : 'guardian_sessions'] + 1
       });
     }
     setStep('role-select');
@@ -442,21 +347,21 @@ export default function App() {
     setMessages([]);
     setRating(0);
     setRoomId(null);
-    cleanupCall();
-  };
-
-  const resetApp = () => {
-    setStep('role-select');
-    setRole(null);
-    setMessages([]);
-    setRating(0);
-    setRoomId(null);
-    cleanupCall();
   };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>;
+  }
 
   if (!user) {
     return <AuthScreen />;
@@ -537,10 +442,10 @@ export default function App() {
                 <Shield className="w-8 h-8 text-emerald-400 mb-4 mx-auto" strokeWidth={1.5} />
                 <h2 className="text-xl font-semibold mb-2">{t.guardian}</h2>
                 <p className="text-sm text-gray-500">{t.guardianDesc}</p>
-                {guardianRating !== null && (
+                {user.avg_rating > 0 && (
                   <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-center gap-2">
                     <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                    <span className="text-sm font-medium text-yellow-500">{guardianRating.toFixed(1)}</span>
+                    <span className="text-sm font-medium text-yellow-500">{user.avg_rating.toFixed(1)}</span>
                   </div>
                 )}
               </button>
@@ -655,15 +560,6 @@ export default function App() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                {callState === 'idle' && (
-                  <button 
-                    onClick={initiateCall}
-                    title={t.startAudioCall}
-                    className="p-2 text-gray-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-full transition-colors"
-                  >
-                    <Phone className="w-4 h-4" />
-                  </button>
-                )}
                 <button 
                   onClick={endSession}
                   className="text-xs font-medium text-red-400/80 hover:text-red-400 transition-colors flex items-center gap-1 bg-red-400/10 px-3 py-1.5 rounded-full"
@@ -673,53 +569,6 @@ export default function App() {
                 </button>
               </div>
             </header>
-
-            {/* Call Banner */}
-            <AnimatePresence>
-              {callState !== 'idle' && (
-                <motion.div 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className={`overflow-hidden border-b border-zinc-900 ${role === 'confessor' ? 'bg-purple-900/10' : 'bg-emerald-900/10'}`}
-                >
-                  <div className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className={`absolute inset-0 rounded-full animate-ping opacity-20 ${role === 'confessor' ? 'bg-purple-500' : 'bg-emerald-500'}`} />
-                        <div className={`p-3 rounded-full ${role === 'confessor' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                          <Mic className="w-5 h-5" />
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-200">
-                          {callState === 'calling' ? t.calling : t.activeCall}
-                        </p>
-                        {callState === 'active' && (
-                          <p className="text-xs text-gray-400 font-mono mt-0.5">{formatTime(callDuration)}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {callState === 'active' && (
-                        <button 
-                          onClick={toggleMute}
-                          className={`p-3 rounded-full transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700'}`}
-                        >
-                          {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                        </button>
-                      )}
-                      <button 
-                        onClick={endCall}
-                        className="p-3 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                      >
-                        <PhoneOff className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6">

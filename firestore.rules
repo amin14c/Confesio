@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['uid', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen']) &&
+             data.uid == request.auth.uid &&
+             data.completed_sessions is number && data.completed_sessions >= 0 &&
+             data.confessions is number && data.confessions >= 0 &&
+             data.guardian_sessions is number && data.guardian_sessions >= 0 &&
+             data.avg_rating is number && data.avg_rating >= 0 && data.avg_rating <= 5 &&
+             data.lastSeen is number;
+    }
+
+    function isValidQueueEntry() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['uid', 'role', 'lang', 'joinedAt']) &&
+             data.uid == request.auth.uid &&
+             data.role in ['confessor', 'guardian'] &&
+             data.lang is string && data.lang.size() > 0 && data.lang.size() <= 10 &&
+             data.joinedAt is number;
+    }
+
+    function isValidRoom() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['confessorId', 'guardianId', 'lang', 'status', 'createdAt']) &&
+             data.confessorId is string && data.confessorId.size() > 0 &&
+             data.guardianId is string && data.guardianId.size() > 0 &&
+             data.lang is string && data.lang.size() > 0 && data.lang.size() <= 10 &&
+             data.status in ['active', 'ended'] &&
+             data.createdAt is number;
+    }
+
+    function isValidMessage() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['text', 'senderId', 'role', 'timestamp']) &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 2000 &&
+             data.senderId == request.auth.uid &&
+             data.role in ['confessor', 'guardian'] &&
+             data.timestamp is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser();
+      allow update: if isOwner(userId) && isValidUser();
+    }
+
+    match /queues/{queueId} {
+      // Anyone authenticated can read the queue to find a match
+      allow read: if isAuthenticated();
+      // Users can only create their own queue entries
+      allow create: if isAuthenticated() && isValidQueueEntry() && request.resource.data.uid == request.auth.uid;
+      // Allow deletion by owner OR by someone who just matched with them (we'll trust authenticated users to clean up queues for now to keep it simple)
+      allow delete: if isAuthenticated();
+      // Users can update a queue entry
+      allow update: if isAuthenticated();
+    }
+
+    match /rooms/{roomId} {
+      // Users can read rooms they are part of
+      allow read: if isAuthenticated() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid);
+      // Any authenticated user can create a room when a match is found
+      allow create: if isAuthenticated() && isValidRoom() && (request.resource.data.confessorId == request.auth.uid || request.resource.data.guardianId == request.auth.uid);
+      // Users in the room can update it (e.g. to end the session)
+      allow update: if isAuthenticated() && isValidRoom() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid);
+      
+      match /messages/{messageId} {
+        // Users can read messages in rooms they are part of
+        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+        // Users can create messages in rooms they are part of
+        allow create: if isAuthenticated() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+      }
+    }
+  }
+}

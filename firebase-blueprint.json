@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the Confessio app (anonymous)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "completed_sessions": { "type": "number" },
+        "confessions": { "type": "number" },
+        "guardian_sessions": { "type": "number" },
+        "avg_rating": { "type": "number" },
+        "lastSeen": { "type": "number" }
+      },
+      "required": ["uid", "completed_sessions", "confessions", "guardian_sessions", "avg_rating", "lastSeen"]
+    },
+    "QueueEntry": {
+      "title": "QueueEntry",
+      "description": "A user waiting for a match",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "role": { "type": "string", "enum": ["confessor", "guardian"] },
+        "lang": { "type": "string" },
+        "joinedAt": { "type": "number" }
+      },
+      "required": ["uid", "role", "lang", "joinedAt"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "An active chat session between a confessor and a guardian",
+      "type": "object",
+      "properties": {
+        "confessorId": { "type": "string" },
+        "guardianId": { "type": "string" },
+        "lang": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "ended"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["confessorId", "guardianId", "lang", "status", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A chat message within a room",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "role": { "type": "string", "enum": ["confessor", "guardian"] },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["text", "senderId", "role", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/queues/{queueId}": {
+      "schema": { "$ref": "#/entities/QueueEntry" },
+      "description": "Users waiting in the matchmaking queue"
+    },
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/Room" },
+      "description": "Active chat rooms"
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Messages in a chat room"
+    }
+  }
+}
