@@ -79,7 +79,7 @@ export const AccountDashboard = ({ onClose }: { onClose: () => void }) => {
             </div>
           </div>
 
-          <div className="bg-[#0a0a0a] border border-gray-800/50 rounded-2xl p-6">
+          <div className="bg-[#0a0a0a] border border-gray-800/50 rounded-2xl p-6 mb-4">
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-400">مرآة الأدوار</span>
               {confessorRatio > 80 && <span className="text-amber-500/80 text-xs">حاول الاستماع أكثر</span>}
@@ -92,6 +92,35 @@ export const AccountDashboard = ({ onClose }: { onClose: () => void }) => {
               <span>معترف ({Math.round(confessorRatio)}%)</span>
               <span>حارس ({Math.round(100 - confessorRatio)}%)</span>
             </div>
+          </div>
+
+          <div className="bg-[#0a0a0a] border border-gray-800/50 rounded-2xl p-6">
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-gray-400">النقاط اليومية (الحد الأقصى 50)</span>
+              <span className="text-amber-500/80 text-xs">{user.dailyPoints || 0} / 50</span>
+            </div>
+            <div className="h-2 bg-gray-800 rounded-full overflow-hidden flex">
+              <div className="bg-amber-500 h-full transition-all" style={{ width: `${Math.min(((user.dailyPoints || 0) / 50) * 100, 100)}%` }} />
+            </div>
+            <p className="text-xs text-gray-500 mt-2">نضع حداً أقصى للنقاط اليومية للحفاظ على توازنك النفسي ومنع الإرهاق العاطفي.</p>
+          </div>
+        </section>
+
+        {/* القسم ٣: الشارات والمكافآت */}
+        <section className="bg-[#0a0a0a] border border-gray-800/50 rounded-2xl p-6 mb-6">
+          <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+            🏆 شاراتي
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            {user.badges && user.badges.map((badge, idx) => (
+              <div key={idx} className="bg-amber-500/10 border border-amber-500/30 text-amber-500 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2">
+                {badge === 'Trusted Guardian' ? '🌟' : badge === 'Empath Listener' ? '💖' : '🌱'}
+                {badge}
+              </div>
+            ))}
+            {(!user.badges || user.badges.length === 0) && (
+              <div className="text-gray-500 text-sm">لم تحصل على شارات بعد. ابدأ الاستماع كحارس لكسبها!</div>
+            )}
           </div>
         </section>
 

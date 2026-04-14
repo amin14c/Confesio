@@ -22,10 +22,13 @@ service cloud.firestore {
     // ===============================================================
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'createdAt', 'credits', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen']) &&
+      return hasOnlyAllowedFields(['uid', 'createdAt', 'credits', 'dailyPoints', 'lastPointDate', 'badges', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen']) &&
              data.uid == request.auth.uid &&
              data.createdAt is number &&
              data.credits is number && data.credits >= 0 &&
+             (!('dailyPoints' in data) || (data.dailyPoints is number && data.dailyPoints >= 0)) &&
+             (!('lastPointDate' in data) || data.lastPointDate is string) &&
+             (!('badges' in data) || data.badges is list) &&
              data.completed_sessions is number && data.completed_sessions >= 0 &&
              data.confessions is number && data.confessions >= 0 &&
              data.guardian_sessions is number && data.guardian_sessions >= 0 &&
@@ -59,6 +62,25 @@ service cloud.firestore {
              data.senderId == request.auth.uid &&
              data.role in ['confessor', 'guardian'] &&
              data.timestamp is number;
+    }
+
+    function isValidSignal() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['type', 'senderId', 'data', 'timestamp']) &&
+             data.type in ['offer', 'answer', 'candidate'] &&
+             data.senderId == request.auth.uid &&
+             data.data is string && data.data.size() > 0 && data.data.size() <= 10000 &&
+             data.timestamp is number;
+    }
+
+    function isValidReport() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['roomId', 'reportedBy', 'reportedRole', 'timestamp', 'status']) &&
+             data.roomId is string && data.roomId.size() > 0 &&
+             data.reportedBy == request.auth.uid &&
+             data.reportedRole in ['confessor', 'guardian'] &&
+             data.timestamp is number &&
+             data.status == 'pending';
     }
 
     // ===============================================================
@@ -95,6 +117,17 @@ service cloud.firestore {
         // Users can create messages in rooms they are part of
         allow create: if isAuthenticated() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
       }
+      
+      match /signals/{signalId} {
+        // Users can read signals in rooms they are part of
+        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+        // Users can create signals in rooms they are part of
+        allow create: if isAuthenticated() && isValidSignal() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+      }
+    }
+
+    match /reports/{reportId} {
+      allow create: if isAuthenticated() && isValidReport();
     }
   }
 }

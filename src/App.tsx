@@ -1,11 +1,63 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff, UserCircle } from 'lucide-react';
+import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff, UserCircle, Flag, AlertTriangle } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { AuthScreen } from './components/AuthScreen';
 import { AccountDashboard } from './components/AccountDashboard';
-import { db } from './firebase';
+import { AudioCall } from './components/AudioCall';
+import { db, auth } from './firebase';
 import { collection, doc, setDoc, getDocs, query, where, onSnapshot, deleteDoc, addDoc, orderBy, updateDoc, limit } from 'firebase/firestore';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map((provider: any) => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 type AppLanguage = 'en' | 'fr' | 'ar';
 type Step = 'app-lang' | 'role-select' | 'comm-lang' | 'ritual' | 'chat' | 'rating' | 'reward';
@@ -44,6 +96,7 @@ const translations = {
     rateConfessor: 'How do you rate your experience as a guardian?',
     returnStart: 'Return to start',
     startAudioCall: 'Start Audio Call',
+    acceptCall: 'Accept Call',
     calling: 'Calling...',
     activeCall: 'Audio Call Active',
     endCall: 'End Call',
@@ -57,6 +110,9 @@ const translations = {
     rewardTitle: 'Points Earned!',
     rewardDesc: 'Thank you for being a compassionate guardian. You earned',
     points: 'points',
+    report: 'Report',
+    reportConfirm: 'Are you sure you want to report this user for abusive behavior?',
+    reportSubmitted: 'Report submitted successfully. Our automated systems will review this session.',
   },
   fr: {
     appLangTitle: "Langue de l'application",
@@ -82,6 +138,7 @@ const translations = {
     rateConfessor: 'Comment évaluez-vous votre expérience en tant que gardien ?',
     returnStart: 'Retour au début',
     startAudioCall: 'Démarrer l\'appel audio',
+    acceptCall: 'Accepter l\'appel',
     calling: 'Appel en cours...',
     activeCall: 'Appel audio actif',
     endCall: 'Terminer l\'appel',
@@ -95,6 +152,9 @@ const translations = {
     rewardTitle: 'Points Gagnés !',
     rewardDesc: 'Merci d\'être un gardien compatissant. Vous avez gagné',
     points: 'points',
+    report: 'Signaler',
+    reportConfirm: 'Êtes-vous sûr de vouloir signaler cet utilisateur pour comportement abusif ?',
+    reportSubmitted: 'Signalement envoyé. Nos systèmes automatisés examineront cette session.',
   },
   ar: {
     appLangTitle: 'اختر لغة التطبيق',
@@ -120,6 +180,7 @@ const translations = {
     rateConfessor: 'كيف تقيم تجربتك كحارس؟',
     returnStart: 'العودة للبداية',
     startAudioCall: 'بدء مكالمة صوتية',
+    acceptCall: 'قبول المكالمة',
     calling: 'يتصل...',
     activeCall: 'مكالمة صوتية نشطة',
     endCall: 'إنهاء المكالمة',
@@ -133,6 +194,9 @@ const translations = {
     rewardTitle: 'لقد كسبت نقاطاً!',
     rewardDesc: 'شكراً لكونك حارساً متعاطفاً. لقد كسبت',
     points: 'نقطة',
+    report: 'إبلاغ',
+    reportConfirm: 'هل أنت متأكد من الإبلاغ عن هذا المستخدم بسبب سلوك مسيء؟',
+    reportSubmitted: 'تم إرسال البلاغ. ستقوم أنظمتنا الآلية بمراجعة هذه الجلسة.',
   }
 };
 
@@ -161,6 +225,9 @@ export default function App() {
   const [queueId, setQueueId] = useState<string | null>(null);
 
   const [earnedPoints, setEarnedPoints] = useState(0);
+  const [showReportModal, setShowReportModal] = useState(false);
+
+  const [roomCreatedAt, setRoomCreatedAt] = useState<number | null>(null);
 
   const t = translations[appLang];
   const isRtl = appLang === 'ar';
@@ -202,11 +269,18 @@ export default function App() {
       unsubRooms = onSnapshot(roomsQuery, (snapshot) => {
         if (!snapshot.empty) {
           const roomDoc = snapshot.docs[0];
+          // Wait for backend acknowledgment to prevent permission-denied race conditions
+          // on subcollections (messages, signals) that rely on the room document existing on the server.
+          if (roomDoc.metadata.hasPendingWrites) return; 
+          
           setRoomId(roomDoc.id);
+          setRoomCreatedAt(roomDoc.data().createdAt);
           setStep('chat');
           // Clean up my queue entry
           deleteDoc(doc(db, 'queues', newQueueId)).catch(() => {});
         }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'rooms');
       });
 
       // 3. If I am a confessor, actively look for a guardian
@@ -226,12 +300,13 @@ export default function App() {
             
             // Create a room
             const newRoomRef = doc(collection(db, 'rooms'));
+            const now = Date.now();
             await setDoc(newRoomRef, {
               confessorId: user.uid,
               guardianId: guardianId,
               lang: commLang,
               status: 'active',
-              createdAt: Date.now()
+              createdAt: now
             });
             
             // Delete the guardian's queue entry
@@ -277,6 +352,8 @@ export default function App() {
         });
       });
       setMessages(newMessages);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, `rooms/${roomId}/messages`);
     });
 
     const roomRef = doc(db, 'rooms', roomId);
@@ -291,6 +368,8 @@ export default function App() {
         }]);
         setTimeout(() => setStep('rating'), 3000);
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `rooms/${roomId}`);
     });
 
     return () => {
@@ -344,18 +423,77 @@ export default function App() {
     setStep('rating');
   };
 
+  const submitReport = async () => {
+    if (!roomId || !user) return;
+    
+    await addDoc(collection(db, 'reports'), {
+      roomId,
+      reportedBy: user.uid,
+      reportedRole: role === 'confessor' ? 'guardian' : 'confessor',
+      timestamp: Date.now(),
+      status: 'pending'
+    });
+    
+    setShowReportModal(false);
+    alert(t.reportSubmitted);
+    endSession();
+  };
+
   const submitRatingAndReset = async () => {
     let points = 0;
     if (rating > 0 && user) {
       const isGuardian = role === 'guardian';
-      // Guardians get 10 base points + up to 10 points based on self-reflection/rating
-      points = isGuardian ? 10 + (rating * 2) : 0;
+      
+      if (isGuardian) {
+        // Gamification Rules:
+        // 1. X points per 10 minutes (X = 5)
+        // 2. Y points bonus for 4-5 stars (Y = 10)
+        // 3. Daily Cap = 50 points
+        
+        const durationMinutes = Math.floor((Date.now() - (roomCreatedAt || Date.now())) / 60000);
+        // Base points: 5 points per 10 minutes (minimum 2 points for joining)
+        const durationPoints = 2 + Math.floor(durationMinutes / 10) * 5;
+        const ratingBonus = rating >= 4 ? 10 : 0;
+        let calculatedPoints = durationPoints + ratingBonus;
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        completed_sessions: user.completed_sessions + 1,
-        [isGuardian ? 'guardian_sessions' : 'confessions']: user[isGuardian ? 'guardian_sessions' : 'confessions'] + 1,
-        credits: (user.credits || 0) + points
-      });
+        let newDailyPoints = user.dailyPoints || 0;
+        const today = new Date().toISOString().split('T')[0];
+        
+        if (user.lastPointDate !== today) {
+          newDailyPoints = 0;
+        }
+
+        const DAILY_CAP = 50;
+        if (newDailyPoints + calculatedPoints > DAILY_CAP) {
+          calculatedPoints = Math.max(0, DAILY_CAP - newDailyPoints);
+        }
+
+        points = calculatedPoints;
+        newDailyPoints += points;
+        const totalCredits = (user.credits || 0) + points;
+
+        // Badges update
+        let earnedBadges = user.badges ? [...user.badges] : ['Listener Basic'];
+        if (totalCredits >= 500 && !earnedBadges.includes('Trusted Guardian')) {
+          earnedBadges.push('Trusted Guardian');
+        } else if (totalCredits >= 100 && !earnedBadges.includes('Empath Listener')) {
+          earnedBadges.push('Empath Listener');
+        }
+
+        await updateDoc(doc(db, 'users', user.uid), {
+          completed_sessions: user.completed_sessions + 1,
+          guardian_sessions: user.guardian_sessions + 1,
+          credits: totalCredits,
+          dailyPoints: newDailyPoints,
+          lastPointDate: today,
+          badges: earnedBadges
+        });
+      } else {
+        await updateDoc(doc(db, 'users', user.uid), {
+          completed_sessions: user.completed_sessions + 1,
+          confessions: user.confessions + 1
+        });
+      }
     }
     
     if (points > 0) {
@@ -372,6 +510,7 @@ export default function App() {
     setMessages([]);
     setRating(0);
     setRoomId(null);
+    setRoomCreatedAt(null);
     setEarnedPoints(0);
   };
 
@@ -587,6 +726,14 @@ export default function App() {
               </div>
               <div className="flex items-center gap-2">
                 <button 
+                  onClick={() => setShowReportModal(true)}
+                  className="text-xs font-medium text-gray-400 hover:text-red-400 transition-colors flex items-center gap-1 bg-zinc-800/50 hover:bg-zinc-800 px-3 py-1.5 rounded-full"
+                >
+                  <Flag className="w-3 h-3" />
+                  {t.report}
+                </button>
+                <AudioCall roomId={roomId} userId={user.uid} isRtl={isRtl} t={t} />
+                <button 
                   onClick={endSession}
                   className="text-xs font-medium text-red-400/80 hover:text-red-400 transition-colors flex items-center gap-1 bg-red-400/10 px-3 py-1.5 rounded-full"
                 >
@@ -595,6 +742,33 @@ export default function App() {
                 </button>
               </div>
             </header>
+
+            {/* Report Modal */}
+            {showReportModal && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6 max-w-sm w-full text-center">
+                  <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <AlertTriangle className="w-6 h-6 text-red-500" />
+                  </div>
+                  <h3 className="text-lg font-medium text-white mb-2">{t.report}</h3>
+                  <p className="text-sm text-gray-400 mb-6">{t.reportConfirm}</p>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setShowReportModal(false)}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-300 bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                    >
+                      {t.cancel}
+                    </button>
+                    <button 
+                      onClick={submitReport}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
+                    >
+                      {t.confirm}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6">

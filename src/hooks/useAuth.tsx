@@ -2,11 +2,19 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { handleFirestoreError } from '../App';
+
+enum OperationType {
+  GET = 'get',
+}
 
 interface UserStats {
   uid: string;
   createdAt: number;
   credits: number;
+  dailyPoints: number;
+  lastPointDate: string;
+  badges: string[];
   completed_sessions: number;
   confessions: number;
   guardian_sessions: number;
@@ -42,6 +50,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               uid: firebaseUser.uid,
               createdAt: Date.now(),
               credits: 0,
+              dailyPoints: 0,
+              lastPointDate: new Date().toISOString().split('T')[0],
+              badges: ['Listener Basic'],
               completed_sessions: 0,
               confessions: 0,
               guardian_sessions: 0,
@@ -52,6 +63,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUser(initialUser);
           }
           setLoading(false);
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
         });
         
         return () => unsubDoc();

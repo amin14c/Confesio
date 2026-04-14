@@ -8,13 +8,16 @@
         "uid": { "type": "string", "description": "Firebase Auth UID" },
         "createdAt": { "type": "number", "description": "Timestamp of creation" },
         "credits": { "type": "number", "description": "Gamification points" },
+        "dailyPoints": { "type": "number", "description": "Points earned today" },
+        "lastPointDate": { "type": "string", "description": "Date of last point earning (YYYY-MM-DD)" },
+        "badges": { "type": "array", "items": { "type": "string" }, "description": "Earned badges" },
         "completed_sessions": { "type": "number" },
         "confessions": { "type": "number" },
         "guardian_sessions": { "type": "number" },
         "avg_rating": { "type": "number" },
         "lastSeen": { "type": "number" }
       },
-      "required": ["uid", "createdAt", "credits", "completed_sessions", "confessions", "guardian_sessions", "avg_rating", "lastSeen"]
+      "required": ["uid", "createdAt", "credits", "dailyPoints", "lastPointDate", "badges", "completed_sessions", "confessions", "guardian_sessions", "avg_rating", "lastSeen"]
     },
     "QueueEntry": {
       "title": "QueueEntry",
@@ -52,6 +55,31 @@
         "timestamp": { "type": "number" }
       },
       "required": ["text", "senderId", "role", "timestamp"]
+    },
+    "Signal": {
+      "title": "Signal",
+      "description": "WebRTC signaling data for audio calls",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["offer", "answer", "candidate"] },
+        "senderId": { "type": "string" },
+        "data": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["type", "senderId", "data", "timestamp"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "A report of abusive behavior in a room",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "reportedBy": { "type": "string" },
+        "reportedRole": { "type": "string", "enum": ["confessor", "guardian"] },
+        "timestamp": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "reviewed"] }
+      },
+      "required": ["roomId", "reportedBy", "reportedRole", "timestamp", "status"]
     }
   },
   "firestore": {
@@ -70,6 +98,14 @@
     "/rooms/{roomId}/messages/{messageId}": {
       "schema": { "$ref": "#/entities/Message" },
       "description": "Messages in a chat room"
+    },
+    "/rooms/{roomId}/signals/{signalId}": {
+      "schema": { "$ref": "#/entities/Signal" },
+      "description": "WebRTC signaling data for a specific room"
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "User reports of abusive behavior"
     }
   }
 }
