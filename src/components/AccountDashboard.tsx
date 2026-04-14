@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Shield, Copy, Download, X, LogOut, AlertTriangle } from 'lucide-react';
+import { Shield, Copy, Download, X, LogOut, AlertTriangle, Globe2 } from 'lucide-react';
+import { AppLanguage } from '../App';
 
-export const AccountDashboard = ({ onClose }: { onClose: () => void }) => {
+interface AccountDashboardProps {
+  onClose: () => void;
+  appLang: AppLanguage;
+  setAppLang: (lang: AppLanguage) => void;
+}
+
+export const AccountDashboard = ({ onClose, appLang, setAppLang }: AccountDashboardProps) => {
   const { user, logout } = useAuth();
 
   if (!user) return null;
@@ -126,6 +133,30 @@ export const AccountDashboard = ({ onClose }: { onClose: () => void }) => {
 
         {/* القسم ٤: الإعدادات والأمان */}
         <section className="bg-[#0a0a0a] border border-gray-800/50 rounded-2xl p-6 mb-8">
+          <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+            الإعدادات والأمان
+          </h2>
+          
+          <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-800/50">
+            <div>
+              <div className="text-white mb-1 flex items-center gap-2">
+                <Globe2 className="w-4 h-4 text-amber-500" />
+                لغة التطبيق
+              </div>
+              <div className="text-xs text-gray-500">تغيير لغة واجهة المستخدم</div>
+            </div>
+            <select
+              value={appLang}
+              onChange={(e) => setAppLang(e.target.value as AppLanguage)}
+              className="bg-gray-900 border border-gray-700 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5 outline-none"
+              dir="ltr"
+            >
+              <option value="en">English</option>
+              <option value="fr">Français</option>
+              <option value="ar">العربية</option>
+            </select>
+          </div>
+
           <div className="flex justify-between items-center">
             <div>
               <div className="text-white mb-1">تسجيل الخروج</div>

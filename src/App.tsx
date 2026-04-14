@@ -59,7 +59,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-type AppLanguage = 'en' | 'fr' | 'ar';
+export type AppLanguage = 'en' | 'fr' | 'ar';
 type Step = 'app-lang' | 'role-select' | 'comm-lang' | 'ritual' | 'chat' | 'rating' | 'reward';
 type Role = 'confessor' | 'guardian' | null;
 
@@ -208,6 +208,35 @@ const communicationLanguages = [
   { id: 'de', name: 'German', native: 'Deutsch' },
 ];
 
+const playNotificationSound = () => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.1);
+
+    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  } catch (e) {
+    console.error("Audio play failed", e);
+  }
+};
+
 export default function App() {
   const { user, loading } = useAuth();
   const [showDashboard, setShowDashboard] = useState(false);
@@ -331,9 +360,25 @@ export default function App() {
     };
   }, [step, user, role, commLang]);
 
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (step === 'chat' && roomId) {
+        // Use navigator.sendBeacon or a simple fetch to update the room status
+        // Since we can't easily use Firestore SDK in beforeunload reliably,
+        // we'll try to do a fast updateDoc.
+        updateDoc(doc(db, 'rooms', roomId), { status: 'ended' }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [step, roomId]);
+
   // Chat Logic
   useEffect(() => {
     if (step !== 'chat' || !roomId || !user) return;
+
+    let isInitialLoad = true;
 
     const messagesQuery = query(
       collection(db, `rooms/${roomId}/messages`),
@@ -341,17 +386,35 @@ export default function App() {
     );
 
     const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
+      let hasNewOtherMessage = false;
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          if (!isInitialLoad && data.senderId !== user.uid && data.senderId !== 'system') {
+            hasNewOtherMessage = true;
+          }
+        }
+      });
+
       const newMessages: Message[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
         newMessages.push({
           id: doc.id,
           text: data.text,
-          sender: data.senderId === user.uid ? 'me' : 'other',
-          timestamp: new Date(data.timestamp)
+          sender: data.senderId === 'system' ? 'other' : (data.senderId === user.uid ? 'me' : 'other'),
+          timestamp: new Date(data.timestamp),
+          isSystem: data.senderId === 'system'
         });
       });
       setMessages(newMessages);
+
+      if (hasNewOtherMessage) {
+        playNotificationSound();
+      }
+
+      isInitialLoad = false;
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `rooms/${roomId}/messages`);
     });
@@ -534,7 +597,7 @@ export default function App() {
 
   return (
     <div dir={isRtl ? 'rtl' : 'ltr'} className="min-h-screen bg-[#050505] text-gray-100 flex flex-col font-sans selection:bg-purple-900 selection:text-white relative">
-      {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} />}
+      {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} appLang={appLang} setAppLang={setAppLang} />}
       
       <AnimatePresence mode="wait">
         

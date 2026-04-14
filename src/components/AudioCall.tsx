@@ -49,6 +49,8 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
             const offer = JSON.parse(data.data);
             setIncomingOffer(offer);
             setCallState('incoming');
+          } else if (data.type === 'end') {
+            endCall(false);
           } else {
             const pc = peerConnectionRef.current;
             if (!pc) return;
@@ -83,6 +85,10 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
     peerConnectionRef.current = pc;
 
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setErrorMsg('Browser does not support audio calls.');
+        return false;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       localStreamRef.current = stream;
       
@@ -174,7 +180,7 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
     }
   };
 
-  const endCall = () => {
+  const endCall = async (sendSignal = true) => {
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
@@ -183,6 +189,26 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
     }
+    
+    if (sendSignal && callState !== 'idle') {
+      try {
+        await addDoc(collection(db, `rooms/${roomId}/signals`), {
+          type: 'end',
+          senderId: userId,
+          timestamp: Date.now()
+        });
+        
+        await addDoc(collection(db, `rooms/${roomId}/messages`), {
+          text: t.callEnded || 'Audio call ended',
+          senderId: 'system',
+          role: 'system',
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        console.error('Error sending end signal:', error);
+      }
+    }
+    
     setCallState('idle');
     setIncomingOffer(null);
   };
