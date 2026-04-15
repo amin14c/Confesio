@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff, UserCircle, Flag, AlertTriangle } from 'lucide-react';
+import { Shield, MessageCircle, Send, Star, Flame, Globe2, Languages, Phone, PhoneOff, Mic, MicOff, UserCircle, Flag, AlertTriangle, Smile, Check, CheckCheck, Reply, Edit2, Trash2, X } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { AuthScreen } from './components/AuthScreen';
 import { AccountDashboard } from './components/AccountDashboard';
@@ -69,6 +69,12 @@ interface Message {
   sender: 'me' | 'other';
   timestamp: Date;
   isSystem?: boolean;
+  reaction?: string;
+  replyToId?: string;
+  replyToText?: string;
+  isDeleted?: boolean;
+  isEdited?: boolean;
+  status?: 'sent' | 'read';
 }
 
 const translations = {
@@ -208,30 +214,46 @@ const communicationLanguages = [
   { id: 'de', name: 'German', native: 'Deutsch' },
 ];
 
+let audioCtx: AudioContext | null = null;
+
+const initAudio = () => {
+  try {
+    if (!audioCtx) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        audioCtx = new AudioContextClass();
+      }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  } catch (e) {
+    console.error("Audio init failed", e);
+  }
+};
+
 const playNotificationSound = () => {
   try {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    if (ctx.state === 'suspended') {
-      ctx.resume();
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
     }
-    const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(600, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.1);
+    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.1);
 
-    gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
 
     osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
+    gainNode.connect(audioCtx.destination);
 
     osc.start();
-    osc.stop(ctx.currentTime + 0.1);
+    osc.stop(audioCtx.currentTime + 0.15);
   } catch (e) {
     console.error("Audio play failed", e);
   }
@@ -248,6 +270,13 @@ export default function App() {
   const [inputText, setInputText] = useState('');
   const [rating, setRating] = useState(0);
   const [waitingTime, setWaitingTime] = useState(0);
+  const [activeReactionMsgId, setActiveReactionMsgId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const emojis = ['❤️', '👍', '😢', '🙏', '✨'];
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -387,6 +416,7 @@ export default function App() {
 
     const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
       let hasNewOtherMessage = false;
+      const unreadIds: string[] = [];
 
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
@@ -400,15 +430,33 @@ export default function App() {
       const newMessages: Message[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
+        const sender = data.senderId === 'system' ? 'other' : (data.senderId === user.uid ? 'me' : 'other');
+        
+        if (sender === 'other' && !data.isSystem && data.status !== 'read') {
+          unreadIds.push(doc.id);
+        }
+
         newMessages.push({
           id: doc.id,
           text: data.text,
-          sender: data.senderId === 'system' ? 'other' : (data.senderId === user.uid ? 'me' : 'other'),
+          sender: sender as 'me' | 'other',
           timestamp: new Date(data.timestamp),
-          isSystem: data.senderId === 'system'
+          isSystem: data.senderId === 'system',
+          reaction: data.reaction,
+          replyToId: data.replyToId,
+          replyToText: data.replyToText,
+          isDeleted: data.isDeleted,
+          isEdited: data.isEdited,
+          status: data.status || 'sent'
         });
       });
       setMessages(newMessages);
+
+      if (unreadIds.length > 0) {
+        unreadIds.forEach(id => {
+          updateDoc(doc(db, `rooms/${roomId}/messages`, id), { status: 'read' }).catch(() => {});
+        });
+      }
 
       if (hasNewOtherMessage) {
         playNotificationSound();
@@ -421,15 +469,25 @@ export default function App() {
 
     const roomRef = doc(db, 'rooms', roomId);
     const unsubRoom = onSnapshot(roomRef, (docSnap) => {
-      if (docSnap.exists() && docSnap.data().status === 'ended') {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          text: t.partnerLeft,
-          sender: 'other',
-          timestamp: new Date(),
-          isSystem: true
-        }]);
-        setTimeout(() => setStep('rating'), 3000);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.status === 'ended') {
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            text: t.partnerLeft,
+            sender: 'other',
+            timestamp: new Date(),
+            isSystem: true
+          }]);
+          setTimeout(() => setStep('rating'), 3000);
+        }
+        
+        const otherUserId = user.uid === data.confessorId ? data.guardianId : data.confessorId;
+        if (data.typing && data.typing[otherUserId]) {
+          setIsOtherTyping(true);
+        } else {
+          setIsOtherTyping(false);
+        }
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `rooms/${roomId}`);
@@ -448,11 +506,13 @@ export default function App() {
   };
 
   const handleRoleSelect = (selectedRole: Role) => {
+    initAudio();
     setRole(selectedRole);
     setStep('comm-lang');
   };
 
   const startRitual = () => {
+    initAudio();
     setStep('ritual');
   };
 
@@ -464,18 +524,68 @@ export default function App() {
     setStep('role-select');
   };
 
+  const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputText(e.target.value);
+    if (!roomId || !user) return;
+    
+    updateDoc(doc(db, 'rooms', roomId), {
+      [`typing.${user.uid}`]: true
+    }).catch(() => {});
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      updateDoc(doc(db, 'rooms', roomId), {
+        [`typing.${user.uid}`]: false
+      }).catch(() => {});
+    }, 2000);
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !roomId || !user) return;
 
     const text = inputText;
     setInputText('');
+    
+    updateDoc(doc(db, 'rooms', roomId), { [`typing.${user.uid}`]: false }).catch(() => {});
+
+    if (editingMessage) {
+      await updateDoc(doc(db, `rooms/${roomId}/messages`, editingMessage.id), {
+        text,
+        isEdited: true
+      });
+      setEditingMessage(null);
+      return;
+    }
 
     await addDoc(collection(db, `rooms/${roomId}/messages`), {
       text,
       senderId: user.uid,
       role: role,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      reaction: null,
+      replyToId: replyingTo?.id || null,
+      replyToText: replyingTo?.text || null,
+      isDeleted: false,
+      isEdited: false,
+      status: 'sent'
+    });
+    setReplyingTo(null);
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!roomId) return;
+    await updateDoc(doc(db, `rooms/${roomId}/messages`, messageId), {
+      isDeleted: true,
+      text: isRtl ? 'تم حذف هذه الرسالة' : 'This message was deleted'
+    });
+  };
+
+  const handleReact = async (messageId: string, emoji: string) => {
+    if (!roomId) return;
+    setActiveReactionMsgId(null);
+    await updateDoc(doc(db, `rooms/${roomId}/messages`, messageId), {
+      reaction: emoji
     });
   };
 
@@ -596,7 +706,7 @@ export default function App() {
   }
 
   return (
-    <div dir={isRtl ? 'rtl' : 'ltr'} className="min-h-screen bg-[#050505] text-gray-100 flex flex-col font-sans selection:bg-purple-900 selection:text-white relative">
+    <div dir={isRtl ? 'rtl' : 'ltr'} className={`min-h-screen ${step === 'chat' ? 'bg-[#16162C]' : 'bg-[#050505]'} text-gray-100 flex flex-col font-sans selection:bg-purple-900 selection:text-white relative transition-colors duration-500`}>
       {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} appLang={appLang} setAppLang={setAppLang} />}
       
       <AnimatePresence mode="wait">
@@ -780,7 +890,7 @@ export default function App() {
             className="flex-1 flex flex-col max-w-2xl mx-auto w-full h-screen"
           >
             {/* Header */}
-            <header className="flex items-center justify-between p-4 border-b border-zinc-900 bg-[#050505]/80 backdrop-blur-md sticky top-0 z-10">
+            <header className="flex items-center justify-between p-4 border-b border-white/5 bg-[#16162C]/80 backdrop-blur-md sticky top-0 z-10 transition-colors duration-500">
               <div className="flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${role === 'confessor' ? 'bg-emerald-500' : 'bg-purple-500'}`} />
                 <span className="text-sm font-medium text-gray-300">
@@ -836,48 +946,135 @@ export default function App() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
               <div className="text-center my-8">
-                <p className="text-xs text-gray-600 bg-zinc-900/50 inline-block px-4 py-2 rounded-full">
+                <p className="text-xs text-gray-400 bg-white/5 border border-white/10 inline-block px-4 py-2 rounded-full">
                   {t.systemMsg}
                 </p>
               </div>
 
-              {messages.map((msg) => (
+              {messages.map((msg, index) => {
+                const isGrouped = index > 0 && messages[index - 1].sender === msg.sender && !messages[index - 1].isSystem && !msg.isSystem;
+                
+                return (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   key={msg.id} 
-                  className={`flex ${msg.isSystem ? 'justify-center' : msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${msg.isSystem ? 'justify-center' : msg.sender === 'me' ? 'justify-end' : 'justify-start'} ${isGrouped ? 'mt-1' : 'mt-4'}`}
                 >
                   {msg.isSystem ? (
-                    <div className="text-xs text-gray-500 bg-zinc-900/50 px-4 py-2 rounded-full">
+                    <div className="text-xs text-gray-400 bg-white/5 border border-white/10 px-4 py-2 rounded-full">
                       {msg.text}
                     </div>
                   ) : (
-                    <div className={`max-w-[80%] rounded-2xl px-5 py-3 text-sm leading-relaxed ${
-                      msg.sender === 'me' 
-                        ? 'bg-zinc-800 text-gray-100 rounded-br-sm' 
-                        : 'bg-zinc-900 text-gray-300 rounded-bl-sm border border-zinc-800/50'
-                    }`}
-                    dir="auto"
-                    >
-                      {msg.text}
+                    <div className="relative group flex flex-col gap-1 max-w-[80%]">
+                      <div className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm flex flex-col gap-1 ${
+                        msg.sender === 'me' 
+                          ? 'bg-gradient-to-br from-purple-600 to-blue-600 text-white' 
+                          : 'bg-white/5 text-gray-200 border border-white/10'
+                      } ${
+                        msg.sender === 'me' 
+                          ? (isGrouped ? 'rounded-2xl rounded-tr-sm rounded-br-sm' : 'rounded-2xl rounded-br-sm') 
+                          : (isGrouped ? 'rounded-2xl rounded-tl-sm rounded-bl-sm' : 'rounded-2xl rounded-bl-sm')
+                      }`}
+                      dir="auto"
+                      >
+                        {msg.replyToText && !msg.isDeleted && (
+                          <div className={`text-xs p-2 rounded-lg mb-1 border-l-2 ${msg.sender === 'me' ? 'bg-black/20 border-white/50 text-white/80' : 'bg-black/40 border-purple-500 text-gray-300'}`}>
+                            {msg.replyToText}
+                          </div>
+                        )}
+                        
+                        <span className={msg.isDeleted ? 'italic opacity-60' : ''}>
+                          {msg.isDeleted ? '🚫 ' + msg.text : msg.text}
+                        </span>
+                        
+                        <div className={`flex items-center gap-1 text-[10px] self-end ${msg.sender === 'me' ? 'text-white/70' : 'text-gray-500'}`} dir="ltr">
+                          {msg.isEdited && <span>(edited)</span>}
+                          <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          {msg.sender === 'me' && !msg.isDeleted && (
+                            msg.status === 'read' ? <CheckCheck className="w-3.5 h-3.5 text-blue-300" /> : <Check className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Reaction Display */}
+                      {msg.reaction && (
+                        <div className={`absolute -bottom-3 ${msg.sender === 'me' ? 'left-2' : 'right-2'} bg-zinc-800 border border-zinc-700 rounded-full px-1.5 py-0.5 text-sm shadow-md z-10`}>
+                          {msg.reaction}
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      {!msg.isDeleted && (
+                        <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-full shadow-sm p-1 z-10 ${msg.sender === 'me' ? '-left-28' : '-right-28'}`}>
+                          <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700"><Reply className="w-3.5 h-3.5" /></button>
+                          {msg.sender === 'me' && (
+                            <>
+                              <button onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700"><Edit2 className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-gray-400 hover:text-red-400 rounded-full hover:bg-zinc-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </>
+                          )}
+                          <button onClick={() => setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id)} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700"><Smile className="w-3.5 h-3.5" /></button>
+                        </div>
+                      )}
+
+                      {/* Emoji Picker */}
+                      {activeReactionMsgId === msg.id && (
+                        <div className={`absolute top-1/2 -translate-y-1/2 flex gap-1 bg-zinc-800 border border-zinc-700 p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? '-left-[220px]' : '-right-[220px]'}`}>
+                          {emojis.map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleReact(msg.id, emoji)}
+                              className="w-8 h-8 flex items-center justify-center hover:bg-zinc-700 rounded-full transition-colors text-lg"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </motion.div>
-              ))}
+                );
+              })}
+              
+              {isOtherTyping && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start mt-4">
+                  <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </motion.div>
+              )}
+              
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
-            <div className="p-4 bg-gradient-to-t from-[#050505] to-transparent">
+            <div className="p-4 bg-gradient-to-t from-[#16162C] to-transparent flex flex-col gap-2">
+              {(replyingTo || editingMessage) && (
+                <div className="flex items-center justify-between bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-sm backdrop-blur-md">
+                  <div className="flex items-center gap-3 text-gray-300 truncate">
+                    {replyingTo ? <Reply className="w-4 h-4 text-purple-400" /> : <Edit2 className="w-4 h-4 text-blue-400" />}
+                    <div className="flex flex-col truncate">
+                      <span className="text-xs text-purple-400 font-medium">{replyingTo ? 'Replying to' : 'Editing message'}</span>
+                      <span className="truncate max-w-[200px] text-gray-400">{replyingTo ? replyingTo.text : editingMessage?.text}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setInputText(''); }} className="text-gray-500 hover:text-white p-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
               <form onSubmit={handleSendMessage} className="relative flex items-center">
                 <input 
                   type="text"
                   value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
+                  onChange={handleTyping}
                   placeholder={t.placeholder}
                   dir="auto"
-                  className={`w-full bg-zinc-900/80 border border-zinc-800 rounded-full py-4 text-sm text-gray-200 focus:outline-none focus:border-zinc-700 focus:bg-zinc-900 transition-all ${isRtl ? 'pr-12 pl-6' : 'pl-12 pr-6'}`}
+                  className={`w-full bg-white/5 border border-white/10 rounded-full py-4 text-sm text-gray-200 focus:outline-none focus:border-white/20 focus:bg-white/10 transition-all ${isRtl ? 'pr-12 pl-6' : 'pl-12 pr-6'}`}
                 />
                 <button 
                   type="submit"
