@@ -67,6 +67,7 @@ interface Message {
   id: string;
   text: string;
   sender: 'me' | 'other';
+  role?: Role;
   timestamp: Date;
   isSystem?: boolean;
   reaction?: string;
@@ -275,6 +276,7 @@ export default function App() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const emojis = ['❤️', '👍', '😢', '🙏', '✨'];
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -298,6 +300,21 @@ export default function App() {
     }
     return () => clearInterval(interval);
   }, [step]);
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (activeReactionMsgId) {
+        setActiveReactionMsgId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [activeReactionMsgId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Matchmaking Logic
   useEffect(() => {
@@ -440,6 +457,7 @@ export default function App() {
           id: doc.id,
           text: data.text,
           sender: sender as 'me' | 'other',
+          role: data.role,
           timestamp: new Date(data.timestamp),
           isSystem: data.senderId === 'system',
           reaction: data.reaction,
@@ -550,6 +568,12 @@ export default function App() {
     updateDoc(doc(db, 'rooms', roomId), { [`typing.${user.uid}`]: false }).catch(() => {});
 
     if (editingMessage) {
+      if (Date.now() - editingMessage.timestamp.getTime() > 5 * 60 * 1000) {
+        alert(isRtl ? 'انتهى وقت التعديل المسموح به (5 دقائق)' : 'Edit time limit exceeded (5 minutes)');
+        setEditingMessage(null);
+        setInputText('');
+        return;
+      }
       await updateDoc(doc(db, `rooms/${roomId}/messages`, editingMessage.id), {
         text,
         isEdited: true
@@ -581,11 +605,11 @@ export default function App() {
     });
   };
 
-  const handleReact = async (messageId: string, emoji: string) => {
+  const handleReact = async (message: Message, emoji: string) => {
     if (!roomId) return;
     setActiveReactionMsgId(null);
-    await updateDoc(doc(db, `rooms/${roomId}/messages`, messageId), {
-      reaction: emoji
+    await updateDoc(doc(db, `rooms/${roomId}/messages`, message.id), {
+      reaction: message.reaction === emoji ? null : emoji
     });
   };
 
@@ -969,8 +993,12 @@ export default function App() {
                     <div className="relative group flex flex-col gap-1 max-w-[80%]">
                       <div className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm flex flex-col gap-1 ${
                         msg.sender === 'me' 
-                          ? 'bg-gradient-to-br from-purple-600 to-blue-600 text-white' 
-                          : 'bg-white/5 text-gray-200 border border-white/10'
+                          ? (msg.role === 'confessor' 
+                              ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white' 
+                              : 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white')
+                          : (msg.role === 'confessor'
+                              ? 'bg-emerald-900/20 text-emerald-100 border border-emerald-500/20'
+                              : 'bg-purple-900/20 text-purple-100 border border-purple-500/20')
                       } ${
                         msg.sender === 'me' 
                           ? (isGrouped ? 'rounded-2xl rounded-tr-sm rounded-br-sm' : 'rounded-2xl rounded-br-sm') 
@@ -979,7 +1007,11 @@ export default function App() {
                       dir="auto"
                       >
                         {msg.replyToText && !msg.isDeleted && (
-                          <div className={`text-xs p-2 rounded-lg mb-1 border-l-2 ${msg.sender === 'me' ? 'bg-black/20 border-white/50 text-white/80' : 'bg-black/40 border-purple-500 text-gray-300'}`}>
+                          <div className={`text-xs p-2 rounded-lg mb-1 border-l-2 ${
+                            msg.sender === 'me' 
+                              ? 'bg-black/20 border-white/50 text-white/80' 
+                              : (msg.role === 'confessor' ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200/80' : 'bg-purple-950/40 border-purple-500/50 text-purple-200/80')
+                          }`}>
                             {msg.replyToText}
                           </div>
                         )}
@@ -999,39 +1031,64 @@ export default function App() {
                       
                       {/* Reaction Display */}
                       {msg.reaction && (
-                        <div className={`absolute -bottom-3 ${msg.sender === 'me' ? 'left-2' : 'right-2'} bg-zinc-800 border border-zinc-700 rounded-full px-1.5 py-0.5 text-sm shadow-md z-10`}>
+                        <button 
+                          onClick={() => handleReact(msg, msg.reaction!)}
+                          className={`absolute -bottom-3 ${msg.sender === 'me' ? 'left-2' : 'right-2'} bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 rounded-full px-1.5 py-0.5 text-sm shadow-md z-10 transition-colors cursor-pointer`}
+                        >
                           {msg.reaction}
-                        </div>
+                        </button>
                       )}
 
                       {/* Action Buttons */}
                       {!msg.isDeleted && (
-                        <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded-full shadow-sm p-1 z-10 ${msg.sender === 'me' ? '-left-28' : '-right-28'}`}>
-                          <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700"><Reply className="w-3.5 h-3.5" /></button>
+                        <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1 bg-zinc-800/90 backdrop-blur-sm border border-zinc-700/50 rounded-full shadow-sm p-1 z-10 ${msg.sender === 'me' ? '-left-28' : '-right-28'}`}>
+                          <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700 transition-colors"><Reply className="w-3.5 h-3.5" /></button>
                           {msg.sender === 'me' && (
                             <>
-                              <button onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700"><Edit2 className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-gray-400 hover:text-red-400 rounded-full hover:bg-zinc-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                              {currentTime - msg.timestamp.getTime() <= 5 * 60 * 1000 && (
+                                <button onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                              )}
+                              <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-gray-400 hover:text-red-400 rounded-full hover:bg-zinc-700 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                             </>
                           )}
-                          <button onClick={() => setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id)} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700"><Smile className="w-3.5 h-3.5" /></button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id);
+                            }} 
+                            className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700 transition-colors"
+                          >
+                            <Smile className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       )}
 
                       {/* Emoji Picker */}
-                      {activeReactionMsgId === msg.id && (
-                        <div className={`absolute top-1/2 -translate-y-1/2 flex gap-1 bg-zinc-800 border border-zinc-700 p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? '-left-[220px]' : '-right-[220px]'}`}>
-                          {emojis.map(emoji => (
-                            <button
-                              key={emoji}
-                              onClick={() => handleReact(msg.id, emoji)}
-                              className="w-8 h-8 flex items-center justify-center hover:bg-zinc-700 rounded-full transition-colors text-lg"
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      <AnimatePresence>
+                        {activeReactionMsgId === msg.id && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.8, y: '-50%' }}
+                            animate={{ opacity: 1, scale: 1, y: '-50%' }}
+                            exit={{ opacity: 0, scale: 0.8, y: '-50%' }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`absolute top-1/2 flex gap-1 bg-zinc-800/95 backdrop-blur-md border border-zinc-700/50 p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? '-left-[220px]' : '-right-[220px]'}`}
+                          >
+                            {emojis.map(emoji => (
+                              <button
+                                key={emoji}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReact(msg, emoji);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center hover:bg-zinc-700 rounded-full transition-all text-lg hover:scale-110"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   )}
                 </motion.div>
