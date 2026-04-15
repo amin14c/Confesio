@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff, PhoneCall, PhoneForwarded, Volume2, Volume, Info } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, PhoneCall, PhoneForwarded, Volume2, Volume, Info, SignalHigh, SignalMedium, SignalLow, SignalZero } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, doc, onSnapshot, addDoc, query, orderBy } from 'firebase/firestore';
 import { handleFirestoreError } from '../App';
@@ -23,6 +23,7 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
   const [isRemoteSpeaking, setIsRemoteSpeaking] = useState(false);
   const [remoteLeft, setRemoteLeft] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [connectionQuality, setConnectionQuality] = useState<'good' | 'fair' | 'poor' | 'disconnected' | null>(null);
   
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -44,12 +45,49 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    let statsInterval: NodeJS.Timeout;
+
     if (callState === 'active') {
       interval = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+      
+      statsInterval = setInterval(async () => {
+        if (!peerConnectionRef.current) return;
+        try {
+          const stats = await peerConnectionRef.current.getStats();
+          let rtt = 0;
+          let foundCandidatePair = false;
+
+          stats.forEach(report => {
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              foundCandidatePair = true;
+              rtt = report.currentRoundTripTime || 0;
+            }
+          });
+
+          if (!foundCandidatePair) {
+            // Still connecting or no active pair
+            setConnectionQuality('poor');
+          } else if (rtt === 0) {
+            setConnectionQuality('good');
+          } else if (rtt < 0.15) {
+            setConnectionQuality('good');
+          } else if (rtt < 0.4) {
+            setConnectionQuality('fair');
+          } else {
+            setConnectionQuality('poor');
+          }
+        } catch (e) {
+          console.error("Error getting WebRTC stats", e);
+        }
+      }, 2000);
     } else {
       setCallDuration(0);
+      setConnectionQuality(null);
     }
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearInterval(statsInterval);
+    };
   }, [callState]);
 
   const formatDuration = (seconds: number) => {
@@ -131,6 +169,12 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = remoteStreamRef.current;
     }
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+        setConnectionQuality('disconnected');
+      }
+    };
 
     pc.ontrack = (event) => {
       event.streams[0].getTracks().forEach((track) => {
@@ -344,6 +388,15 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
             <span className="text-xs font-mono text-gray-300 w-8 text-center" aria-label={`Call duration: ${formatDuration(callDuration)}`}>
               {formatDuration(callDuration)}
             </span>
+          </div>
+
+          {/* Connection Quality Indicator */}
+          <div className="flex items-center justify-center w-5 mr-1" title={`Connection Quality: ${connectionQuality || 'calculating'}`}>
+            {connectionQuality === 'good' && <SignalHigh className="w-3.5 h-3.5 text-emerald-400" />}
+            {connectionQuality === 'fair' && <SignalMedium className="w-3.5 h-3.5 text-amber-400" />}
+            {connectionQuality === 'poor' && <SignalLow className="w-3.5 h-3.5 text-red-400" />}
+            {connectionQuality === 'disconnected' && <SignalZero className="w-3.5 h-3.5 text-gray-500" />}
+            {!connectionQuality && <SignalMedium className="w-3.5 h-3.5 text-gray-500 animate-pulse" />}
           </div>
 
           <button 
