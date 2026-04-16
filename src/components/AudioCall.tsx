@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff, PhoneCall, PhoneForwarded, Volume2, Volume, Info, SignalHigh, SignalMedium, SignalLow, SignalZero } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, PhoneCall, PhoneForwarded, Volume2, Volume, Info, SignalHigh, SignalMedium, SignalLow, SignalZero, User } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, doc, onSnapshot, addDoc, query, orderBy } from 'firebase/firestore';
 import { handleFirestoreError } from '../App';
+import { motion, AnimatePresence } from 'motion/react';
 
 enum OperationType {
   LIST = 'list',
@@ -29,6 +30,7 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -42,6 +44,33 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
     ],
     iceCandidatePoolSize: 10,
   };
+
+  useEffect(() => {
+    // Initialize ringtone
+    ringtoneRef.current = new Audio('https://actions.google.com/sounds/v1/alarms/phone_ringing.ogg');
+    ringtoneRef.current.loop = true;
+    return () => {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (callState === 'calling' || callState === 'incoming') {
+      ringtoneRef.current?.play().catch(e => console.log("Audio play prevented", e));
+      if (callState === 'incoming' && document.visibilityState === 'hidden' && Notification.permission === 'granted') {
+        new Notification(t.incomingCall || 'Incoming Call', {
+          body: t.incomingCallBody || 'Someone is calling you.',
+          icon: '/vite.svg'
+        });
+      }
+    } else {
+      ringtoneRef.current?.pause();
+      if (ringtoneRef.current) ringtoneRef.current.currentTime = 0;
+    }
+  }, [callState]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -65,7 +94,6 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
           });
 
           if (!foundCandidatePair) {
-            // Still connecting or no active pair
             setConnectionQuality('poor');
           } else if (rtt === 0) {
             setConnectionQuality('good');
@@ -104,7 +132,7 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
       snapshot.docChanges().forEach(async (change) => {
         if (change.type === 'added') {
           const data = change.doc.data();
-          if (data.senderId === userId) return; // Ignore our own signals
+          if (data.senderId === userId) return;
 
           if (data.type === 'offer') {
             const offer = JSON.parse(data.data);
@@ -161,7 +189,7 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
       setErrorMsg(null);
     } catch (error) {
       console.error('Error accessing microphone:', error);
-      setErrorMsg('Mic access denied. Please allow permissions or open app in a new tab.');
+      setErrorMsg('Mic access denied. Please allow permissions.');
       return false;
     }
 
@@ -181,7 +209,6 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
         remoteStreamRef.current?.addTrack(track);
       });
 
-      // Setup audio analyzer for speaking indicator
       try {
         if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -207,7 +234,7 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
             sum += dataArray[i];
           }
           const average = sum / dataArray.length;
-          setIsRemoteSpeaking(average > 15); // threshold
+          setIsRemoteSpeaking(average > 15);
           animationFrameRef.current = requestAnimationFrame(checkVolume);
         };
         
@@ -334,90 +361,109 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <>
       <audio ref={remoteAudioRef} autoPlay playsInline />
       
-      {errorMsg && (
-        <div className="text-[10px] text-red-400 bg-red-400/10 px-2 py-1 rounded-md max-w-[150px] leading-tight">
-          {errorMsg}
-        </div>
-      )}
-
-      {remoteLeft && (
-        <div className="text-[10px] font-medium text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2.5 py-1.5 rounded-full leading-tight flex items-center gap-1.5 animate-pulse">
-          <Info className="w-3 h-3" />
-          {t.partnerLeft || 'Partner left the call'}
-        </div>
-      )}
-
       {callState === 'idle' && (
         <button 
           onClick={startCall}
-          className="text-xs font-medium text-emerald-400/80 hover:text-emerald-400 transition-colors flex items-center gap-1.5 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1.5 rounded-full"
+          className="text-xs font-medium text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-[var(--color-bg-primary)] transition-colors flex items-center gap-1.5 bg-[var(--color-accent)]/10 px-3 py-1.5 rounded-full"
         >
           <Phone className="w-3.5 h-3.5" />
           {t.startAudioCall || 'Start Call'}
         </button>
       )}
 
-      {callState === 'incoming' && (
-        <button 
-          onClick={acceptCall}
-          className="text-xs font-medium text-white flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 px-4 py-1.5 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all animate-bounce"
-        >
-          <PhoneCall className="w-3.5 h-3.5 animate-pulse" />
-          {t.acceptCall || 'Accept Call'}
-        </button>
-      )}
-
-      {callState === 'calling' && (
-        <div className="text-xs font-medium text-amber-400 flex items-center gap-1.5 bg-amber-400/10 border border-amber-400/30 px-3 py-1.5 rounded-full">
-          <PhoneForwarded className="w-3.5 h-3.5 animate-pulse" />
-          {t.calling || 'Calling...'}
-        </div>
-      )}
-
-      {callState === 'active' && (
-        <div className="flex items-center gap-2 bg-zinc-900/90 border border-zinc-700/50 rounded-full p-1 pl-3 shadow-lg backdrop-blur-sm">
-          <div className="flex items-center gap-1.5 mr-1" aria-label={isRemoteSpeaking ? "Remote participant is speaking" : "Remote participant is silent"}>
-            {isRemoteSpeaking ? (
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            ) : (
-              <Volume className="w-3.5 h-3.5 text-gray-500" />
-            )}
-            <span className="text-xs font-mono text-gray-300 w-8 text-center" aria-label={`Call duration: ${formatDuration(callDuration)}`}>
-              {formatDuration(callDuration)}
-            </span>
-          </div>
-
-          {/* Connection Quality Indicator */}
-          <div className="flex items-center justify-center w-5 mr-1" title={`Connection Quality: ${connectionQuality || 'calculating'}`}>
-            {connectionQuality === 'good' && <SignalHigh className="w-3.5 h-3.5 text-emerald-400" />}
-            {connectionQuality === 'fair' && <SignalMedium className="w-3.5 h-3.5 text-amber-400" />}
-            {connectionQuality === 'poor' && <SignalLow className="w-3.5 h-3.5 text-red-400" />}
-            {connectionQuality === 'disconnected' && <SignalZero className="w-3.5 h-3.5 text-gray-500" />}
-            {!connectionQuality && <SignalMedium className="w-3.5 h-3.5 text-gray-500 animate-pulse" />}
-          </div>
-
-          <button 
-            onClick={toggleMute}
-            aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-            className={`p-1.5 rounded-full transition-colors flex items-center justify-center ${isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700 border border-transparent'}`}
-            title={isMuted ? 'Unmute' : 'Mute'}
+      <AnimatePresence>
+        {callState !== 'idle' && (
+          <motion.div 
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-between bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] pb-12 pt-20"
           >
-            {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-          </button>
-          
-          <button 
-            onClick={() => endCall(true)}
-            aria-label="End Call"
-            className="p-1.5 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-colors border border-transparent"
-            title={t.endCall || 'End Call'}
-          >
-            <PhoneOff className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-    </div>
+            {/* Header / Status */}
+            <div className="flex flex-col items-center gap-4">
+              <div className="text-sm font-medium text-[var(--color-text-secondary)] uppercase tracking-widest">
+                {callState === 'calling' && (t.calling || 'Calling...')}
+                {callState === 'incoming' && (t.incomingCall || 'Incoming Call')}
+                {callState === 'active' && (t.ongoingCall || 'Ongoing Call')}
+              </div>
+              
+              {/* Profile Avatar with Ripple Effect */}
+              <div className="relative mt-8">
+                {isRemoteSpeaking && (
+                  <motion.div 
+                    initial={{ scale: 1, opacity: 0.5 }}
+                    animate={{ scale: 1.5, opacity: 0 }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    className="absolute inset-0 rounded-full bg-[var(--color-accent)]"
+                  />
+                )}
+                <div className="relative z-10 w-32 h-32 rounded-full bg-[var(--color-bg-secondary)] border-4 border-[var(--color-bg-primary)] shadow-2xl flex items-center justify-center overflow-hidden">
+                  <User className="w-16 h-16 text-[var(--color-text-secondary)]" />
+                </div>
+              </div>
+
+              <div className="mt-6 text-3xl font-light">
+                {callState === 'active' ? formatDuration(callDuration) : '...'}
+              </div>
+
+              {callState === 'active' && connectionQuality && (
+                <div className="flex items-center gap-2 mt-2 text-sm text-[var(--color-text-secondary)]">
+                  {connectionQuality === 'good' && <SignalHigh className="w-4 h-4 text-emerald-500" />}
+                  {connectionQuality === 'fair' && <SignalMedium className="w-4 h-4 text-amber-500" />}
+                  {connectionQuality === 'poor' && <SignalLow className="w-4 h-4 text-red-500" />}
+                  {connectionQuality === 'disconnected' && <SignalZero className="w-4 h-4 text-[var(--color-text-secondary)]" />}
+                  <span className="capitalize">{connectionQuality} Connection</span>
+                </div>
+              )}
+
+              {errorMsg && (
+                <div className="mt-4 text-sm text-red-400 bg-red-500/10 px-4 py-2 rounded-lg max-w-[80%] text-center">
+                  {errorMsg}
+                </div>
+              )}
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center justify-center gap-8 mb-12">
+              {callState === 'incoming' ? (
+                <>
+                  <button 
+                    onClick={() => endCall(true)}
+                    className="w-16 h-16 rounded-full bg-red-500 text-[var(--color-bg-primary)] flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform hover:scale-105"
+                  >
+                    <PhoneOff className="w-6 h-6" />
+                  </button>
+                  <button 
+                    onClick={acceptCall}
+                    className="w-16 h-16 rounded-full bg-[var(--color-accent)] text-[var(--color-bg-primary)] flex items-center justify-center shadow-lg hover:bg-[var(--color-accent-hover)] transition-transform hover:scale-105 animate-bounce"
+                  >
+                    <PhoneCall className="w-6 h-6" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={toggleMute}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 ${isMuted ? 'bg-[var(--color-text-primary)] text-[var(--color-bg-primary)]' : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]'}`}
+                  >
+                    {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                  </button>
+                  <button 
+                    onClick={() => endCall(true)}
+                    className="w-16 h-16 rounded-full bg-red-500 text-[var(--color-bg-primary)] flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform hover:scale-105"
+                  >
+                    <PhoneOff className="w-6 h-6" />
+                  </button>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 };

@@ -5,9 +5,9 @@ import { useAuth } from './hooks/useAuth';
 import { AuthScreen } from './components/AuthScreen';
 import { AccountDashboard } from './components/AccountDashboard';
 import { AudioCall } from './components/AudioCall';
-import { db, auth } from './firebase';
+import { db, auth, messaging } from './firebase';
 import { collection, doc, setDoc, getDocs, query, where, onSnapshot, deleteDoc, addDoc, orderBy, updateDoc, limit } from 'firebase/firestore';
-import type { UserInfo } from 'firebase/auth'; // FIX #6: remove 'any'
+import { getToken, onMessage } from 'firebase/messaging';
 
 enum OperationType {
   CREATE = 'create',
@@ -46,8 +46,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
       tenantId: auth.currentUser?.tenantId,
-      // FIX #6: replaced 'any' with UserInfo
-      providerInfo: auth.currentUser?.providerData.map((provider: UserInfo) => ({
+      providerInfo: auth.currentUser?.providerData.map((provider: any) => ({
         providerId: provider.providerId,
         displayName: provider.displayName,
         email: provider.email,
@@ -79,13 +78,6 @@ interface Message {
   isEdited?: boolean;
   status?: 'sent' | 'read';
 }
-
-// FIX #4: Crisis keywords for detection
-const CRISIS_KEYWORDS = [
-  'suicide', 'kill myself', 'end it all', 'end my life', 'want to die',
-  'انتحار', 'أنهي حياتي', 'أريد الموت', 'قتل نفسي',
-  'me suicider', 'mettre fin à mes jours', 'veux mourir'
-];
 
 const translations = {
   en: {
@@ -129,9 +121,6 @@ const translations = {
     report: 'Report',
     reportConfirm: 'Are you sure you want to report this user for abusive behavior?',
     reportSubmitted: 'Report submitted successfully. Our automated systems will review this session.',
-    confirm: 'Confirm', // FIX #1
-    msgTooLong: 'Message too long (1000 chars max)', // FIX #7
-    editExpired: 'Edit time limit exceeded (5 minutes)', // existing, kept
   },
   fr: {
     appLangTitle: "Langue de l'application",
@@ -174,9 +163,6 @@ const translations = {
     report: 'Signaler',
     reportConfirm: 'Êtes-vous sûr de vouloir signaler cet utilisateur pour comportement abusif ?',
     reportSubmitted: 'Signalement envoyé. Nos systèmes automatisés examineront cette session.',
-    confirm: 'Confirmer', // FIX #1
-    msgTooLong: 'Message trop long (max 1000 caractères)', // FIX #7
-    editExpired: 'Délai de modification dépassé (5 minutes)',
   },
   ar: {
     appLangTitle: 'اختر لغة التطبيق',
@@ -219,9 +205,6 @@ const translations = {
     report: 'إبلاغ',
     reportConfirm: 'هل أنت متأكد من الإبلاغ عن هذا المستخدم بسبب سلوك مسيء؟',
     reportSubmitted: 'تم إرسال البلاغ. ستقوم أنظمتنا الآلية بمراجعة هذه الجلسة.',
-    confirm: 'تأكيد', // FIX #1
-    msgTooLong: 'الرسالة طويلة جداً (حد 1000 حرف)', // FIX #7
-    editExpired: 'انتهى وقت التعديل المسموح به (5 دقائق)',
   }
 };
 
@@ -282,6 +265,7 @@ export default function App() {
   const { user, loading } = useAuth();
   const [showDashboard, setShowDashboard] = useState(false);
   const [appLang, setAppLang] = useState<AppLanguage>('en');
+  const [theme, setTheme] = useState<'dark' | 'light' | 'midnight' | 'forest'>('dark');
   const [step, setStep] = useState<Step>('app-lang');
   const [role, setRole] = useState<Role>(null);
   const [commLang, setCommLang] = useState<string>('en');
@@ -301,8 +285,6 @@ export default function App() {
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [queueId, setQueueId] = useState<string | null>(null);
-  // FIX #3: ref to avoid stale closure in timeout
-  const queueIdRef = useRef<string | null>(null);
 
   const [earnedPoints, setEarnedPoints] = useState(0);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -312,11 +294,46 @@ export default function App() {
   const t = translations[appLang];
   const isRtl = appLang === 'ar';
 
-  // FIX #4: Crisis detection
-  const hasCrisis = messages.some(m =>
-    !m.isSystem && m.sender === 'other' && !m.isDeleted &&
-    CRISIS_KEYWORDS.some(kw => m.text.toLowerCase().includes(kw.toLowerCase()))
-  );
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (user && messaging) {
+      const requestPermission = async () => {
+        try {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            const token = await getToken(messaging, {
+              // Using default vapidKey or omitting it.
+            });
+            if (token) {
+              console.log('FCM Token:', token);
+              await setDoc(doc(db, 'users', user.uid), { fcmToken: token }, { merge: true });
+            }
+          }
+        } catch (error) {
+          console.error('Error requesting notification permission:', error);
+        }
+      };
+      requestPermission();
+
+      const unsubscribe = onMessage(messaging, (payload) => {
+        console.log('Foreground message received:', payload);
+        if (document.visibilityState === 'hidden') {
+          new Notification(payload.notification?.title || 'New Notification', {
+            body: payload.notification?.body,
+            icon: '/vite.svg'
+          });
+        }
+      });
+
+      return () => unsubscribe();
+    } else if (user && 'Notification' in window) {
+      // Fallback for local notifications if FCM is not fully supported
+      Notification.requestPermission();
+    }
+  }, [user]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -348,13 +365,11 @@ export default function App() {
 
     let unsubRooms: () => void;
     let matchInterval: NodeJS.Timeout;
-    // FIX #2: prevent race condition / duplicate room creation
-    let roomCreating = false;
 
     const startMatchmaking = async () => {
+      // 1. Create a queue entry
       const newQueueId = user.uid;
       setQueueId(newQueueId);
-      queueIdRef.current = newQueueId; // FIX #3
       await setDoc(doc(db, 'queues', newQueueId), {
         uid: user.uid,
         role,
@@ -362,6 +377,7 @@ export default function App() {
         joinedAt: Date.now()
       });
 
+      // 2. Listen for rooms where I am a participant
       const roomsQuery = query(
         collection(db, 'rooms'),
         where(role === 'confessor' ? 'confessorId' : 'guardianId', '==', user.uid),
@@ -371,46 +387,48 @@ export default function App() {
       unsubRooms = onSnapshot(roomsQuery, (snapshot) => {
         if (!snapshot.empty) {
           const roomDoc = snapshot.docs[0];
-          if (roomDoc.metadata.hasPendingWrites) return;
+          // Wait for backend acknowledgment to prevent permission-denied race conditions
+          // on subcollections (messages, signals) that rely on the room document existing on the server.
+          if (roomDoc.metadata.hasPendingWrites) return; 
+          
           setRoomId(roomDoc.id);
           setRoomCreatedAt(roomDoc.data().createdAt);
           setStep('chat');
+          // Clean up my queue entry
           deleteDoc(doc(db, 'queues', newQueueId)).catch(() => {});
         }
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'rooms');
       });
 
+      // 3. If I am a confessor, actively look for a guardian
       if (role === 'confessor') {
         matchInterval = setInterval(async () => {
-          // FIX #2: guard against concurrent calls
-          if (roomCreating) return;
-          roomCreating = true;
-          try {
-            const q = query(
-              collection(db, 'queues'),
-              where('role', '==', 'guardian'),
-              where('lang', '==', commLang),
-              orderBy('joinedAt', 'asc'),
-              limit(1)
-            );
-            const snap = await getDocs(q);
-            if (!snap.empty) {
-              const guardianDoc = snap.docs[0];
-              const guardianId = guardianDoc.data().uid;
-              const newRoomRef = doc(collection(db, 'rooms'));
-              const now = Date.now();
-              await setDoc(newRoomRef, {
-                confessorId: user.uid,
-                guardianId: guardianId,
-                lang: commLang,
-                status: 'active',
-                createdAt: now
-              });
-              deleteDoc(doc(db, 'queues', guardianId)).catch(() => {});
-            }
-          } finally {
-            roomCreating = false; // FIX #2: always release lock
+          const q = query(
+            collection(db, 'queues'),
+            where('role', '==', 'guardian'),
+            where('lang', '==', commLang),
+            orderBy('joinedAt', 'asc'),
+            limit(1)
+          );
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const guardianDoc = snap.docs[0];
+            const guardianId = guardianDoc.data().uid;
+            
+            // Create a room
+            const newRoomRef = doc(collection(db, 'rooms'));
+            const now = Date.now();
+            await setDoc(newRoomRef, {
+              confessorId: user.uid,
+              guardianId: guardianId,
+              lang: commLang,
+              status: 'active',
+              createdAt: now
+            });
+            
+            // Delete the guardian's queue entry
+            deleteDoc(doc(db, 'queues', guardianId)).catch(() => {});
           }
         }, 3000);
       }
@@ -418,15 +436,9 @@ export default function App() {
 
     startMatchmaking();
 
-    // FIX #3: use ref inside timeout to avoid stale closure
+    // Timeout after 5 minutes
     const timeout = setTimeout(() => {
-      const idToDelete = queueIdRef.current;
-      if (idToDelete) {
-        deleteDoc(doc(db, 'queues', idToDelete)).catch(() => {});
-        queueIdRef.current = null;
-        setQueueId(null);
-      }
-      setStep('role-select');
+      cancelQueue();
       alert(t.queueTimeout);
     }, 5 * 60 * 1000);
 
@@ -440,9 +452,13 @@ export default function App() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (step === 'chat' && roomId) {
+        // Use navigator.sendBeacon or a simple fetch to update the room status
+        // Since we can't easily use Firestore SDK in beforeunload reliably,
+        // we'll try to do a fast updateDoc.
         updateDoc(doc(db, 'rooms', roomId), { status: 'ended' }).catch(() => {});
       }
     };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [step, roomId]);
@@ -472,16 +488,16 @@ export default function App() {
       });
 
       const newMessages: Message[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
+      snapshot.forEach((doc) => {
+        const data = doc.data();
         const sender = data.senderId === 'system' ? 'other' : (data.senderId === user.uid ? 'me' : 'other');
-
+        
         if (sender === 'other' && !data.isSystem && data.status !== 'read') {
-          unreadIds.push(docSnap.id);
+          unreadIds.push(doc.id);
         }
 
         newMessages.push({
-          id: docSnap.id,
+          id: doc.id,
           text: data.text,
           sender: sender as 'me' | 'other',
           role: data.role,
@@ -505,6 +521,12 @@ export default function App() {
 
       if (hasNewOtherMessage) {
         playNotificationSound();
+        if (document.visibilityState === 'hidden' && Notification.permission === 'granted') {
+          new Notification(t.newMsg || 'New Message', {
+            body: t.newMsgBody || 'You have received a new message.',
+            icon: '/vite.svg'
+          });
+        }
       }
 
       isInitialLoad = false;
@@ -526,7 +548,7 @@ export default function App() {
           }]);
           setTimeout(() => setStep('rating'), 3000);
         }
-
+        
         const otherUserId = user.uid === data.confessorId ? data.guardianId : data.confessorId;
         if (data.typing && data.typing[otherUserId]) {
           setIsOtherTyping(true);
@@ -562,11 +584,8 @@ export default function App() {
   };
 
   const cancelQueue = async () => {
-    // FIX #3: use ref for reliable cleanup
-    const idToDelete = queueIdRef.current;
-    if (idToDelete) {
-      await deleteDoc(doc(db, 'queues', idToDelete)).catch(() => {});
-      queueIdRef.current = null;
+    if (queueId) {
+      await deleteDoc(doc(db, 'queues', queueId)).catch(() => {});
       setQueueId(null);
     }
     setStep('role-select');
@@ -575,7 +594,7 @@ export default function App() {
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputText(e.target.value);
     if (!roomId || !user) return;
-
+    
     updateDoc(doc(db, 'rooms', roomId), {
       [`typing.${user.uid}`]: true
     }).catch(() => {});
@@ -592,20 +611,14 @@ export default function App() {
     e.preventDefault();
     if (!inputText.trim() || !roomId || !user) return;
 
-    // FIX #7: enforce message length limit
-    if (inputText.length > 1000) {
-      alert(t.msgTooLong);
-      return;
-    }
-
     const text = inputText;
     setInputText('');
-
+    
     updateDoc(doc(db, 'rooms', roomId), { [`typing.${user.uid}`]: false }).catch(() => {});
 
     if (editingMessage) {
       if (Date.now() - editingMessage.timestamp.getTime() > 5 * 60 * 1000) {
-        alert(t.editExpired);
+        alert(isRtl ? 'انتهى وقت التعديل المسموح به (5 دقائق)' : 'Edit time limit exceeded (5 minutes)');
         setEditingMessage(null);
         setInputText('');
         return;
@@ -658,7 +671,7 @@ export default function App() {
 
   const submitReport = async () => {
     if (!roomId || !user) return;
-
+    
     await addDoc(collection(db, 'reports'), {
       roomId,
       reportedBy: user.uid,
@@ -666,7 +679,7 @@ export default function App() {
       timestamp: Date.now(),
       status: 'pending'
     });
-
+    
     setShowReportModal(false);
     alert(t.reportSubmitted);
     endSession();
@@ -676,16 +689,22 @@ export default function App() {
     let points = 0;
     if (rating > 0 && user) {
       const isGuardian = role === 'guardian';
-
+      
       if (isGuardian) {
+        // Gamification Rules:
+        // 1. X points per 10 minutes (X = 5)
+        // 2. Y points bonus for 4-5 stars (Y = 10)
+        // 3. Daily Cap = 50 points
+        
         const durationMinutes = Math.floor((Date.now() - (roomCreatedAt || Date.now())) / 60000);
+        // Base points: 5 points per 10 minutes (minimum 2 points for joining)
         const durationPoints = 2 + Math.floor(durationMinutes / 10) * 5;
         const ratingBonus = rating >= 4 ? 10 : 0;
         let calculatedPoints = durationPoints + ratingBonus;
 
         let newDailyPoints = user.dailyPoints || 0;
         const today = new Date().toISOString().split('T')[0];
-
+        
         if (user.lastPointDate !== today) {
           newDailyPoints = 0;
         }
@@ -699,6 +718,7 @@ export default function App() {
         newDailyPoints += points;
         const totalCredits = (user.credits || 0) + points;
 
+        // Badges update
         let earnedBadges = user.badges ? [...user.badges] : ['Listener Basic'];
         if (totalCredits >= 500 && !earnedBadges.includes('Trusted Guardian')) {
           earnedBadges.push('Trusted Guardian');
@@ -721,7 +741,7 @@ export default function App() {
         });
       }
     }
-
+    
     if (points > 0) {
       setEarnedPoints(points);
       setStep('reward');
@@ -751,7 +771,7 @@ export default function App() {
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /></div>;
+    return <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center"><div className="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" /></div>;
   }
 
   if (!user) {
@@ -759,36 +779,46 @@ export default function App() {
   }
 
   return (
-    <div dir={isRtl ? 'rtl' : 'ltr'} className={`min-h-screen ${step === 'chat' ? 'bg-[#16162C]' : 'bg-[#050505]'} text-gray-100 flex flex-col font-sans selection:bg-purple-900 selection:text-white relative transition-colors duration-500`}>
+    <div dir={isRtl ? 'rtl' : 'ltr'} className={`min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] flex flex-col font-sans selection:bg-[var(--color-accent)] selection:text-white relative transition-colors duration-500`}>
       {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} appLang={appLang} setAppLang={setAppLang} />}
-
+      
       <AnimatePresence mode="wait">
-
+        
         {/* STEP 0: APP LANGUAGE SELECTION */}
         {step === 'app-lang' && (
-          <motion.div
+          <motion.div 
             key="app-lang"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full relative"
           >
-            <div className="absolute top-6 right-6">
-              <button onClick={() => setShowDashboard(true)} className="p-2 text-gray-500 hover:text-amber-500 transition-colors">
+            <div className="absolute top-6 right-6 flex items-center gap-4">
+              <select 
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as any)}
+                className="bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-bg-primary)] rounded-lg px-3 py-1.5 text-sm outline-none"
+              >
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="midnight">Midnight</option>
+                <option value="forest">Forest</option>
+              </select>
+              <button onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
                 <UserCircle className="w-8 h-8" />
               </button>
             </div>
-            <Globe2 className="w-12 h-12 text-zinc-500 mb-8" strokeWidth={1} />
-            <h1 className="text-2xl font-light mb-8 text-white">Confessio</h1>
-
+            <Globe2 className="w-12 h-12 text-[var(--color-text-secondary)] mb-8" strokeWidth={1} />
+            <h1 className="text-2xl font-light mb-8 text-[var(--color-text-primary)]">Confessio</h1>
+            
             <div className="w-full space-y-4">
-              <button onClick={() => handleAppLangSelect('en')} className="w-full p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 hover:bg-zinc-800 transition-colors flex justify-between items-center">
+              <button onClick={() => handleAppLangSelect('en')} className="w-full p-4 rounded-xl bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] hover:opacity-80 transition-opacity flex justify-between items-center">
                 <span className="font-medium">English</span>
               </button>
-              <button onClick={() => handleAppLangSelect('fr')} className="w-full p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 hover:bg-zinc-800 transition-colors flex justify-between items-center">
+              <button onClick={() => handleAppLangSelect('fr')} className="w-full p-4 rounded-xl bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] hover:opacity-80 transition-opacity flex justify-between items-center">
                 <span className="font-medium">Français</span>
               </button>
-              <button onClick={() => handleAppLangSelect('ar')} className="w-full p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 hover:bg-zinc-800 transition-colors flex justify-between items-center">
+              <button onClick={() => handleAppLangSelect('ar')} className="w-full p-4 rounded-xl bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] hover:opacity-80 transition-opacity flex justify-between items-center">
                 <span className="font-medium font-sans">العربية</span>
               </button>
             </div>
@@ -797,7 +827,7 @@ export default function App() {
 
         {/* STEP 1: ROLE SELECTION */}
         {step === 'role-select' && (
-          <motion.div
+          <motion.div 
             key="role-select"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -805,36 +835,36 @@ export default function App() {
             className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full relative"
           >
             <div className="absolute top-6 right-6">
-              <button onClick={() => setShowDashboard(true)} className="p-2 text-gray-500 hover:text-amber-500 transition-colors">
+              <button onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
                 <UserCircle className="w-8 h-8" />
               </button>
             </div>
             <div className="text-center mb-16">
-              <h1 className="text-4xl font-light tracking-widest mb-4 text-white">Confessio</h1>
-              <p className="text-gray-400 text-sm">{t.subtitle}</p>
+              <h1 className="text-4xl font-light tracking-widest mb-4 text-[var(--color-text-primary)]">Confessio</h1>
+              <p className="text-[var(--color-text-secondary)] text-sm">{t.subtitle}</p>
             </div>
 
             <div className="w-full space-y-6">
-              <button
+              <button 
                 onClick={() => handleRoleSelect('confessor')}
-                className="w-full group relative overflow-hidden rounded-2xl bg-zinc-900/50 border border-zinc-800 p-8 transition-all hover:border-purple-500/50 hover:bg-zinc-900"
+                className="w-full group relative overflow-hidden rounded-2xl bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] p-8 transition-all hover:border-[var(--color-accent)]/50 hover:bg-[var(--color-bg-secondary)]"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <MessageCircle className="w-8 h-8 text-purple-400 mb-4 mx-auto" strokeWidth={1.5} />
-                <h2 className="text-xl font-semibold mb-2">{t.confessor}</h2>
-                <p className="text-sm text-gray-500">{t.confessorDesc}</p>
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-accent)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <MessageCircle className="w-8 h-8 text-[var(--color-accent)] mb-4 mx-auto" strokeWidth={1.5} />
+                <h2 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)]">{t.confessor}</h2>
+                <p className="text-sm text-[var(--color-text-secondary)]">{t.confessorDesc}</p>
               </button>
 
-              <button
+              <button 
                 onClick={() => handleRoleSelect('guardian')}
-                className="w-full group relative overflow-hidden rounded-2xl bg-zinc-900/50 border border-zinc-800 p-8 transition-all hover:border-emerald-500/50 hover:bg-zinc-900"
+                className="w-full group relative overflow-hidden rounded-2xl bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] p-8 transition-all hover:border-[var(--color-accent)]/50 hover:bg-[var(--color-bg-secondary)]"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <Shield className="w-8 h-8 text-emerald-400 mb-4 mx-auto" strokeWidth={1.5} />
-                <h2 className="text-xl font-semibold mb-2">{t.guardian}</h2>
-                <p className="text-sm text-gray-500">{t.guardianDesc}</p>
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-accent)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Shield className="w-8 h-8 text-[var(--color-accent)] mb-4 mx-auto" strokeWidth={1.5} />
+                <h2 className="text-xl font-semibold mb-2 text-[var(--color-text-primary)]">{t.guardian}</h2>
+                <p className="text-sm text-[var(--color-text-secondary)]">{t.guardianDesc}</p>
                 {user.avg_rating > 0 && (
-                  <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-center gap-2">
+                  <div className="mt-4 pt-4 border-t border-[var(--color-bg-primary)] flex items-center justify-center gap-2">
                     <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                     <span className="text-sm font-medium text-yellow-500">{user.avg_rating.toFixed(1)}</span>
                   </div>
@@ -846,7 +876,7 @@ export default function App() {
 
         {/* STEP 2: COMMUNICATION LANGUAGE SELECTION */}
         {step === 'comm-lang' && (
-          <motion.div
+          <motion.div 
             key="comm-lang"
             initial={{ opacity: 0, x: isRtl ? -20 : 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -854,20 +884,20 @@ export default function App() {
             className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full"
           >
             <div className="text-center mb-10">
-              <Languages className="w-10 h-10 text-zinc-500 mx-auto mb-4" strokeWidth={1.5} />
-              <h2 className="text-2xl font-light mb-2">{t.commLangTitle}</h2>
-              <p className="text-gray-400 text-sm">{t.commLangDesc}</p>
+              <Languages className="w-10 h-10 text-[var(--color-text-secondary)] mx-auto mb-4" strokeWidth={1.5} />
+              <h2 className="text-2xl font-light mb-2 text-[var(--color-text-primary)]">{t.commLangTitle}</h2>
+              <p className="text-[var(--color-text-secondary)] text-sm">{t.commLangDesc}</p>
             </div>
 
             <div className="w-full space-y-3 mb-8 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
               {communicationLanguages.map((lang) => (
-                <button
+                <button 
                   key={lang.id}
                   onClick={() => setCommLang(lang.id)}
                   className={`w-full p-4 rounded-xl border transition-all flex justify-between items-center ${
-                    commLang === lang.id
-                      ? 'bg-zinc-800 border-white text-white'
-                      : 'bg-zinc-900/50 border-zinc-800 text-gray-400 hover:bg-zinc-800 hover:text-gray-200'
+                    commLang === lang.id 
+                      ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-white' 
+                      : 'bg-[var(--color-bg-secondary)] border-[var(--color-bg-primary)] text-[var(--color-text-secondary)] hover:opacity-80'
                   }`}
                 >
                   <span className="font-medium">{lang.native}</span>
@@ -876,7 +906,7 @@ export default function App() {
               ))}
             </div>
 
-            <button
+            <button 
               onClick={startRitual}
               className="w-full py-4 rounded-xl bg-white text-black font-medium transition-all hover:bg-gray-200"
             >
@@ -887,7 +917,7 @@ export default function App() {
 
         {/* STEP 3: THE RITUAL (MATCHING) */}
         {step === 'ritual' && (
-          <motion.div
+          <motion.div 
             key="ritual"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -895,35 +925,35 @@ export default function App() {
             className="flex-1 flex flex-col items-center justify-center p-6"
           >
             <div className="relative flex items-center justify-center w-64 h-64 mb-12">
-              <motion.div
-                animate={{
+              <motion.div 
+                animate={{ 
                   scale: [1, 1.5, 1],
                   opacity: [0.3, 0.1, 0.3]
                 }}
-                transition={{
-                  duration: 4,
+                transition={{ 
+                  duration: 4, 
                   repeat: Infinity,
-                  ease: "easeInOut"
+                  ease: "easeInOut" 
                 }}
-                className={`absolute inset-0 rounded-full blur-3xl ${role === 'confessor' ? 'bg-purple-600' : 'bg-emerald-600'}`}
+                className={`absolute inset-0 rounded-full blur-3xl bg-[var(--color-accent)]`}
               />
-              <motion.div
+              <motion.div 
                 animate={{ scale: [1, 1.1, 1] }}
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                 className="relative z-10 text-center"
               >
-                <p className="text-2xl font-light text-white/90 mb-2">{t.breathe}</p>
-                <p className="text-sm text-gray-500">
+                <p className="text-2xl font-light text-[var(--color-text-primary)] mb-2">{t.breathe}</p>
+                <p className="text-sm text-[var(--color-text-secondary)]">
                   {role === 'confessor' ? t.waitConfessor : t.waitGuardian}
                 </p>
               </motion.div>
             </div>
 
             <div className="flex flex-col items-center gap-6">
-              <div className="font-mono text-xl text-gray-300 bg-zinc-900/80 px-5 py-2.5 rounded-xl border border-zinc-800 shadow-lg">
+              <div className="font-mono text-xl text-[var(--color-text-primary)] bg-[var(--color-bg-secondary)] px-5 py-2.5 rounded-xl border border-[var(--color-bg-primary)] shadow-lg">
                 ⏱ {formatTime(waitingTime)}
               </div>
-              <button
+              <button 
                 onClick={cancelQueue}
                 className="text-sm text-red-400/80 hover:text-red-400 transition-colors px-8 py-2.5 rounded-full border border-red-900/30 hover:bg-red-900/20"
               >
@@ -935,7 +965,7 @@ export default function App() {
 
         {/* STEP 4: CHAT SESSION */}
         {step === 'chat' && (
-          <motion.div
+          <motion.div 
             key="chat"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -943,23 +973,23 @@ export default function App() {
             className="flex-1 flex flex-col max-w-2xl mx-auto w-full h-screen"
           >
             {/* Header */}
-            <header className="flex items-center justify-between p-4 border-b border-white/5 bg-[#16162C]/80 backdrop-blur-md sticky top-0 z-10 transition-colors duration-500">
+            <header className="flex items-center justify-between p-4 border-b border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)]/80 backdrop-blur-md sticky top-0 z-10 transition-colors duration-500">
               <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full animate-pulse ${role === 'confessor' ? 'bg-emerald-500' : 'bg-purple-500'}`} />
-                <span className="text-sm font-medium text-gray-300">
+                <div className={`w-2 h-2 rounded-full animate-pulse bg-[var(--color-accent)]`} />
+                <span className="text-sm font-medium text-[var(--color-text-primary)]">
                   {role === 'confessor' ? t.anonGuardian : t.anonConfessor}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <button
+                <button 
                   onClick={() => setShowReportModal(true)}
-                  className="text-xs font-medium text-gray-400 hover:text-red-400 transition-colors flex items-center gap-1 bg-zinc-800/50 hover:bg-zinc-800 px-3 py-1.5 rounded-full"
+                  className="text-xs font-medium text-[var(--color-text-secondary)] hover:text-red-400 transition-colors flex items-center gap-1 bg-[var(--color-bg-primary)] px-3 py-1.5 rounded-full"
                 >
                   <Flag className="w-3 h-3" />
                   {t.report}
                 </button>
                 <AudioCall roomId={roomId} userId={user.uid} isRtl={isRtl} t={t} />
-                <button
+                <button 
                   onClick={endSession}
                   className="text-xs font-medium text-red-400/80 hover:text-red-400 transition-colors flex items-center gap-1 bg-red-400/10 px-3 py-1.5 rounded-full"
                 >
@@ -972,213 +1002,196 @@ export default function App() {
             {/* Report Modal */}
             {showReportModal && (
               <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6 max-w-sm w-full text-center">
+                <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
                   <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <AlertTriangle className="w-6 h-6 text-red-500" />
                   </div>
-                  <h3 className="text-lg font-medium text-white mb-2">{t.report}</h3>
-                  <p className="text-sm text-gray-400 mb-6">{t.reportConfirm}</p>
+                  <h3 className="text-lg font-medium text-[var(--color-text-primary)] mb-2">{t.report}</h3>
+                  <p className="text-sm text-[var(--color-text-secondary)] mb-6">{t.reportConfirm}</p>
                   <div className="flex gap-3">
-                    <button
+                    <button 
                       onClick={() => setShowReportModal(false)}
-                      className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-300 bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                      className="flex-1 py-2.5 rounded-xl text-sm font-medium text-[var(--color-text-primary)] bg-[var(--color-bg-primary)] hover:opacity-80 transition-colors"
                     >
                       {t.cancel}
                     </button>
-                    <button
+                    <button 
                       onClick={submitReport}
                       className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
                     >
-                      {t.confirm} {/* FIX #1: was t.confirm (undefined), now defined */}
+                      {t.confirm}
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* FIX #4: Crisis Alert Banner */}
-            {hasCrisis && role === 'guardian' && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mx-4 mt-3 bg-red-900/30 border border-red-500/40 rounded-xl p-3 text-xs text-red-300"
-              >
-                <p className="font-medium">{t.crisisAlert}</p>
-                <p className="mt-1 opacity-70">{t.supportResources}</p>
-              </motion.div>
-            )}
-
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
               <div className="text-center my-8">
-                <p className="text-xs text-gray-400 bg-white/5 border border-white/10 inline-block px-4 py-2 rounded-full">
+                <p className="text-xs text-[var(--color-text-secondary)] bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] inline-block px-4 py-2 rounded-full">
                   {t.systemMsg}
                 </p>
               </div>
 
               {messages.map((msg, index) => {
                 const isGrouped = index > 0 && messages[index - 1].sender === msg.sender && !messages[index - 1].isSystem && !msg.isSystem;
-
+                
                 return (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    key={msg.id}
-                    className={`flex ${msg.isSystem ? 'justify-center' : msg.sender === 'me' ? 'justify-end' : 'justify-start'} ${isGrouped ? 'mt-1' : 'mt-4'}`}
-                  >
-                    {msg.isSystem ? (
-                      <div className="text-xs text-gray-400 bg-white/5 border border-white/10 px-4 py-2 rounded-full">
-                        {msg.text}
-                      </div>
-                    ) : (
-                      <div className="relative group flex flex-col gap-1 max-w-[80%]">
-                        <div className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm flex flex-col gap-1 ${
-                          msg.sender === 'me'
-                            ? (msg.role === 'confessor'
-                                ? 'bg-gradient-to-br from-emerald-600 to-teal-600 text-white'
-                                : 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white')
-                            : (msg.role === 'confessor'
-                                ? 'bg-emerald-900/20 text-emerald-100 border border-emerald-500/20'
-                                : 'bg-purple-900/20 text-purple-100 border border-purple-500/20')
-                        } ${
-                          msg.sender === 'me'
-                            ? (isGrouped ? 'rounded-2xl rounded-tr-sm rounded-br-sm' : 'rounded-2xl rounded-br-sm')
-                            : (isGrouped ? 'rounded-2xl rounded-tl-sm rounded-bl-sm' : 'rounded-2xl rounded-bl-sm')
-                        }`}
-                        dir="auto"
-                        >
-                          {msg.replyToText && !msg.isDeleted && (
-                            <div className={`text-xs p-2 rounded-lg mb-1 border-l-2 ${
-                              msg.sender === 'me'
-                                ? 'bg-black/20 border-white/50 text-white/80'
-                                : (msg.role === 'confessor' ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200/80' : 'bg-purple-950/40 border-purple-500/50 text-purple-200/80')
-                            }`}>
-                              {msg.replyToText}
-                            </div>
-                          )}
-
-                          <span className={msg.isDeleted ? 'italic opacity-60' : ''}>
-                            {msg.isDeleted ? '🚫 ' + msg.text : msg.text}
-                          </span>
-
-                          <div className={`flex items-center gap-1 text-[10px] self-end ${msg.sender === 'me' ? 'text-white/70' : 'text-gray-500'}`} dir="ltr">
-                            {msg.isEdited && <span>(edited)</span>}
-                            <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            {msg.sender === 'me' && !msg.isDeleted && (
-                              msg.status === 'read' ? <CheckCheck className="w-3.5 h-3.5 text-blue-300" /> : <Check className="w-3.5 h-3.5" />
-                            )}
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  key={msg.id} 
+                  className={`flex ${msg.isSystem ? 'justify-center' : msg.sender === 'me' ? 'justify-end' : 'justify-start'} ${isGrouped ? 'mt-1' : 'mt-4'}`}
+                >
+                  {msg.isSystem ? (
+                    <div className="text-xs text-[var(--color-text-secondary)] bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] px-4 py-2 rounded-full">
+                      {msg.text}
+                    </div>
+                  ) : (
+                    <div className="relative group flex flex-col gap-1 max-w-[80%]">
+                      <div className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm flex flex-col gap-1 ${
+                        msg.sender === 'me' 
+                          ? 'bg-[var(--color-chat-me)] text-[var(--color-text-primary)]'
+                          : 'bg-[var(--color-chat-other)] text-[var(--color-text-primary)]'
+                      } ${
+                        msg.sender === 'me' 
+                          ? (isGrouped ? 'rounded-2xl rounded-tr-sm rounded-br-sm' : 'rounded-2xl rounded-br-sm') 
+                          : (isGrouped ? 'rounded-2xl rounded-tl-sm rounded-bl-sm' : 'rounded-2xl rounded-bl-sm')
+                      }`}
+                      dir="auto"
+                      >
+                        {msg.replyToText && !msg.isDeleted && (
+                          <div className={`text-xs p-2 rounded-lg mb-1 border-l-2 ${
+                            msg.sender === 'me' 
+                              ? 'bg-black/20 border-[var(--color-text-primary)]/50 text-[var(--color-text-primary)]/80' 
+                              : 'bg-[var(--color-bg-primary)] border-[var(--color-accent)] text-[var(--color-text-secondary)]'
+                          }`}>
+                            {msg.replyToText}
                           </div>
+                        )}
+                        
+                        <span className={msg.isDeleted ? 'italic opacity-60' : ''}>
+                          {msg.isDeleted ? '🚫 ' + msg.text : msg.text}
+                        </span>
+                        
+                        <div className={`flex items-center gap-1 text-[10px] self-end ${msg.sender === 'me' ? 'text-[var(--color-text-primary)]/70' : 'text-[var(--color-text-secondary)]'}`} dir="ltr">
+                          {msg.isEdited && <span>(edited)</span>}
+                          <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          {msg.sender === 'me' && !msg.isDeleted && (
+                            msg.status === 'read' ? <CheckCheck className="w-3.5 h-3.5 text-blue-300" /> : <Check className="w-3.5 h-3.5" />
+                          )}
                         </div>
-
-                        {/* Reaction Display */}
-                        {msg.reaction && (
-                          <button
-                            onClick={() => handleReact(msg, msg.reaction!)}
-                            className={`absolute -bottom-3 ${msg.sender === 'me' ? 'left-2' : 'right-2'} bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 rounded-full px-1.5 py-0.5 text-sm shadow-md z-10 transition-colors cursor-pointer`}
-                          >
-                            {msg.reaction}
-                          </button>
-                        )}
-
-                        {/* Action Buttons */}
-                        {!msg.isDeleted && (
-                          <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1 bg-zinc-800/90 backdrop-blur-sm border border-zinc-700/50 rounded-full shadow-sm p-1 z-10 ${msg.sender === 'me' ? '-left-28' : '-right-28'}`}>
-                            <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700 transition-colors"><Reply className="w-3.5 h-3.5" /></button>
-                            {msg.sender === 'me' && (
-                              <>
-                                {currentTime - msg.timestamp.getTime() <= 5 * 60 * 1000 && (
-                                  <button onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                                )}
-                                <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-gray-400 hover:text-red-400 rounded-full hover:bg-zinc-700 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                              </>
-                            )}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id);
-                              }}
-                              className="p-1.5 text-gray-400 hover:text-white rounded-full hover:bg-zinc-700 transition-colors"
-                            >
-                              <Smile className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Emoji Picker */}
-                        <AnimatePresence>
-                          {activeReactionMsgId === msg.id && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.8, y: '-50%' }}
-                              animate={{ opacity: 1, scale: 1, y: '-50%' }}
-                              exit={{ opacity: 0, scale: 0.8, y: '-50%' }}
-                              transition={{ duration: 0.15, ease: "easeOut" }}
-                              onClick={(e) => e.stopPropagation()}
-                              className={`absolute top-1/2 flex gap-1 bg-zinc-800/95 backdrop-blur-md border border-zinc-700/50 p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? '-left-[220px]' : '-right-[220px]'}`}
-                            >
-                              {emojis.map(emoji => (
-                                <button
-                                  key={emoji}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleReact(msg, emoji);
-                                  }}
-                                  className="w-8 h-8 flex items-center justify-center hover:bg-zinc-700 rounded-full transition-all text-lg hover:scale-110"
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
                       </div>
-                    )}
-                  </motion.div>
+                      
+                      {/* Reaction Display */}
+                      {msg.reaction && (
+                        <button 
+                          onClick={() => handleReact(msg, msg.reaction!)}
+                          className={`absolute -bottom-3 ${msg.sender === 'me' ? 'left-2' : 'right-2'} bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] hover:opacity-80 rounded-full px-1.5 py-0.5 text-sm shadow-md z-10 transition-colors cursor-pointer`}
+                        >
+                          {msg.reaction}
+                        </button>
+                      )}
+
+                      {/* Action Buttons */}
+                      {!msg.isDeleted && (
+                        <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1 bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm border border-[var(--color-bg-primary)] rounded-full shadow-sm p-1 z-10 ${msg.sender === 'me' ? '-left-28' : '-right-28'}`}>
+                          <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Reply className="w-3.5 h-3.5" /></button>
+                          {msg.sender === 'me' && (
+                            <>
+                              {currentTime - msg.timestamp.getTime() <= 5 * 60 * 1000 && (
+                                <button onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                              )}
+                              <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-red-400 rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </>
+                          )}
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id);
+                            }} 
+                            className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"
+                          >
+                            <Smile className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Emoji Picker */}
+                      <AnimatePresence>
+                        {activeReactionMsgId === msg.id && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.8, y: '-50%' }}
+                            animate={{ opacity: 1, scale: 1, y: '-50%' }}
+                            exit={{ opacity: 0, scale: 0.8, y: '-50%' }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`absolute top-1/2 flex gap-1 bg-[var(--color-bg-secondary)]/95 backdrop-blur-md border border-[var(--color-bg-primary)] p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? '-left-[220px]' : '-right-[220px]'}`}
+                          >
+                            {emojis.map(emoji => (
+                              <button
+                                key={emoji}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReact(msg, emoji);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-bg-primary)] rounded-full transition-all text-lg hover:scale-110"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </motion.div>
                 );
               })}
-
+              
               {isOtherTyping && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start mt-4">
-                  <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 </motion.div>
               )}
-
+              
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
-            <div className="p-4 bg-gradient-to-t from-[#16162C] to-transparent flex flex-col gap-2">
+            <div className="p-4 bg-[var(--color-bg-secondary)] border-t border-[var(--color-bg-primary)] flex flex-col gap-2">
               {(replyingTo || editingMessage) && (
-                <div className="flex items-center justify-between bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-sm backdrop-blur-md">
-                  <div className="flex items-center gap-3 text-gray-300 truncate">
-                    {replyingTo ? <Reply className="w-4 h-4 text-purple-400" /> : <Edit2 className="w-4 h-4 text-blue-400" />}
+                <div className="flex items-center justify-between bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] rounded-xl px-4 py-3 text-sm">
+                  <div className="flex items-center gap-3 text-[var(--color-text-secondary)] truncate">
+                    {replyingTo ? <Reply className="w-4 h-4 text-[var(--color-accent)]" /> : <Edit2 className="w-4 h-4 text-blue-400" />}
                     <div className="flex flex-col truncate">
-                      <span className="text-xs text-purple-400 font-medium">{replyingTo ? 'Replying to' : 'Editing message'}</span>
-                      <span className="truncate max-w-[200px] text-gray-400">{replyingTo ? replyingTo.text : editingMessage?.text}</span>
+                      <span className="text-xs text-[var(--color-accent)] font-medium">{replyingTo ? 'Replying to' : 'Editing message'}</span>
+                      <span className="truncate max-w-[200px] text-[var(--color-text-secondary)]">{replyingTo ? replyingTo.text : editingMessage?.text}</span>
                     </div>
                   </div>
-                  <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setInputText(''); }} className="text-gray-500 hover:text-white p-1">
+                  <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setInputText(''); }} className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] p-1">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               )}
               <form onSubmit={handleSendMessage} className="relative flex items-center">
-                <input
+                <input 
                   type="text"
                   value={inputText}
                   onChange={handleTyping}
                   placeholder={t.placeholder}
                   dir="auto"
-                  maxLength={1000} // FIX #7: hard limit at HTML level too
-                  className={`w-full bg-white/5 border border-white/10 rounded-full py-4 text-sm text-gray-200 focus:outline-none focus:border-white/20 focus:bg-white/10 transition-all ${isRtl ? 'pr-12 pl-6' : 'pl-12 pr-6'}`}
+                  className={`w-full bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] rounded-full py-4 text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)] transition-all ${isRtl ? 'pr-12 pl-6' : 'pl-12 pr-6'}`}
                 />
-                <button
+                <button 
                   type="submit"
                   disabled={!inputText.trim()}
-                  className={`absolute p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:hover:text-gray-400 transition-colors ${isRtl ? 'right-2' : 'left-2'}`}
+                  className={`absolute p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] disabled:opacity-50 disabled:hover:text-[var(--color-text-secondary)] transition-colors ${isRtl ? 'right-2' : 'left-2'}`}
                 >
                   <Send className={`w-5 h-5 ${isRtl ? 'rotate-180' : ''}`} />
                 </button>
@@ -1189,46 +1202,46 @@ export default function App() {
 
         {/* STEP 5: RATING & BURN */}
         {step === 'rating' && (
-          <motion.div
+          <motion.div 
             key="rating"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full text-center"
           >
-            <motion.div
+            <motion.div 
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.2 }}
               className="mb-12"
             >
               <Flame className="w-16 h-16 text-orange-500/80 mx-auto mb-6 animate-pulse" />
-              <h2 className="text-2xl font-light mb-2">{t.burnedTitle}</h2>
-              <p className="text-sm text-gray-500">{t.burnedDesc}</p>
+              <h2 className="text-2xl font-light mb-2 text-[var(--color-text-primary)]">{t.burnedTitle}</h2>
+              <p className="text-sm text-[var(--color-text-secondary)]">{t.burnedDesc}</p>
             </motion.div>
 
-            <div className="w-full bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-8 backdrop-blur-sm">
-              <h3 className="text-lg font-medium mb-6">
+            <div className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] rounded-2xl p-8 backdrop-blur-sm">
+              <h3 className="text-lg font-medium mb-6 text-[var(--color-text-primary)]">
                 {role === 'confessor' ? t.rateGuardian : t.rateConfessor}
               </h3>
               <div className={`flex justify-center gap-2 mb-8 ${isRtl ? 'flex-row-reverse' : 'flex-row'}`}>
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <button
+                  <button 
                     key={star}
                     onClick={() => setRating(star)}
                     className="p-1 transition-transform hover:scale-110 focus:outline-none"
                   >
-                    <Star
-                      className={`w-8 h-8 ${rating >= star ? 'fill-yellow-500 text-yellow-500' : 'text-zinc-700'}`}
+                    <Star 
+                      className={`w-8 h-8 ${rating >= star ? 'fill-yellow-500 text-yellow-500' : 'text-[var(--color-bg-primary)]'}`} 
                       strokeWidth={1}
                     />
                   </button>
                 ))}
               </div>
-
-              <button
+              
+              <button 
                 onClick={submitRatingAndReset}
                 disabled={rating === 0}
-                className="w-full py-3 rounded-full bg-white text-black font-medium disabled:opacity-20 disabled:cursor-not-allowed transition-all hover:bg-gray-200"
+                className="w-full py-3 rounded-full bg-[var(--color-accent)] text-white font-medium disabled:opacity-20 disabled:cursor-not-allowed transition-all hover:bg-[var(--color-accent-hover)]"
               >
                 {t.submitRating}
               </button>
@@ -1238,24 +1251,24 @@ export default function App() {
 
         {/* STEP 6: REWARD */}
         {step === 'reward' && (
-          <motion.div
+          <motion.div 
             key="reward"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full text-center"
           >
-            <div className="w-full bg-emerald-900/20 border border-emerald-500/30 rounded-3xl p-10 backdrop-blur-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-emerald-500/10 to-transparent pointer-events-none" />
-              <Shield className="w-20 h-20 text-emerald-400 mx-auto mb-6 drop-shadow-[0_0_15px_rgba(52,211,153,0.5)]" />
-              <h2 className="text-3xl font-bold text-white mb-4">{t.rewardTitle}</h2>
-              <p className="text-gray-400 mb-6 text-lg">{t.rewardDesc}</p>
-              <div className="text-5xl font-black text-emerald-400 mb-10 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">
-                +{earnedPoints} <span className="text-2xl text-emerald-500/80">{t.points}</span>
+            <div className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] rounded-3xl p-10 backdrop-blur-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[var(--color-accent)]/10 to-transparent pointer-events-none" />
+              <Shield className="w-20 h-20 text-[var(--color-accent)] mx-auto mb-6 drop-shadow-[0_0_15px_rgba(52,211,153,0.5)]" />
+              <h2 className="text-3xl font-bold text-[var(--color-text-primary)] mb-4">{t.rewardTitle}</h2>
+              <p className="text-[var(--color-text-secondary)] mb-6 text-lg">{t.rewardDesc}</p>
+              <div className="text-5xl font-black text-[var(--color-accent)] mb-10 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]">
+                +{earnedPoints} <span className="text-2xl text-[var(--color-accent)]/80">{t.points}</span>
               </div>
-
-              <button
+              
+              <button 
                 onClick={resetToStart}
-                className="w-full py-4 rounded-full bg-emerald-500 text-black font-bold text-lg transition-all hover:bg-emerald-400 hover:shadow-[0_0_20px_rgba(52,211,153,0.4)]"
+                className="w-full py-4 rounded-full bg-[var(--color-accent)] text-white font-bold text-lg transition-all hover:bg-[var(--color-accent-hover)] hover:shadow-[0_0_20px_rgba(52,211,153,0.4)]"
               >
                 {t.continue}
               </button>
@@ -1266,4 +1279,4 @@ export default function App() {
       </AnimatePresence>
     </div>
   );
-  }
+}
