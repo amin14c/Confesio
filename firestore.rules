@@ -32,7 +32,7 @@ service cloud.firestore {
     // ===============================================================
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'createdAt', 'credits', 'dailyPoints', 'lastPointDate', 'badges', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen']) &&
+      return hasOnlyAllowedFields(['uid', 'createdAt', 'credits', 'dailyPoints', 'lastPointDate', 'badges', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen', 'fcmToken']) &&
              data.uid == request.auth.uid &&
              data.createdAt is number &&
              data.credits is number && data.credits >= 0 &&
@@ -40,10 +40,11 @@ service cloud.firestore {
              (!('lastPointDate' in data) || data.lastPointDate is string) &&
              (!('badges' in data) || data.badges is list) &&
              data.completed_sessions is number && data.completed_sessions >= 0 &&
-             data.confessions is number && data.confessions >= 0 &&
-             data.guardian_sessions is number && data.guardian_sessions >= 0 &&
-             data.avg_rating is number && data.avg_rating >= 0 && data.avg_rating <= 5 &&
-             data.lastSeen is number;
+             (!('confessions' in data) || (data.confessions is number && data.confessions >= 0)) &&
+             (!('guardian_sessions' in data) || (data.guardian_sessions is number && data.guardian_sessions >= 0)) &&
+             (!('avg_rating' in data) || (data.avg_rating is number && data.avg_rating >= 0 && data.avg_rating <= 5)) &&
+             (!('lastSeen' in data) || data.lastSeen is number) &&
+             (!('fcmToken' in data) || data.fcmToken is string);
     }
 
     function isValidQueueEntry() {
