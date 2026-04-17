@@ -235,30 +235,12 @@ const initAudio = () => {
 };
 
 const playNotificationSound = () => {
-  try {
-    if (!audioCtx) return;
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.1);
-
-    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.15);
-  } catch (e) {
-    console.error("Audio play failed", e);
-  }
+  const audio = new Audio('https://actions.google.com/sounds/v1/water/glass_water_pour.ogg');
+  audio.volume = 0.5;
+  audio.play().catch(e => {
+    // Autoplay policy prevented the sound. Normally happens if user hasn't interacted with the page yet.
+    console.log("Audio notification prevented by browser policy", e);
+  });
 };
 
 export default function App() {

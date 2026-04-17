@@ -377,88 +377,97 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
       <AnimatePresence>
         {callState !== 'idle' && (
           <motion.div 
-            initial={{ opacity: 0, y: '100%' }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: '100%' }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-between bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] pb-12 pt-20"
+            className={`fixed inset-0 z-[100] flex flex-col items-center justify-between text-white pb-12 pt-16 ${callState === 'active' ? 'bg-gradient-to-b from-gray-800 to-black' : 'bg-zinc-900'}`}
           >
             {/* Header / Status */}
-            <div className="flex flex-col items-center gap-4">
-              <div className="text-sm font-medium text-[var(--color-text-secondary)] uppercase tracking-widest">
-                {callState === 'calling' && (t.calling || 'Calling...')}
-                {callState === 'incoming' && (t.incomingCall || 'Incoming Call')}
-                {callState === 'active' && (t.ongoingCall || 'Ongoing Call')}
-              </div>
-              
-              {/* Profile Avatar with Ripple Effect */}
-              <div className="relative mt-8">
+            <div className="flex flex-col items-center gap-4 w-full px-6 text-center mt-12">
+              {/* Profile Avatar */}
+              <div className="relative mb-4">
                 {isRemoteSpeaking && (
                   <motion.div 
                     initial={{ scale: 1, opacity: 0.5 }}
-                    animate={{ scale: 1.5, opacity: 0 }}
-                    transition={{ repeat: Infinity, duration: 1.5 }}
-                    className="absolute inset-0 rounded-full bg-[var(--color-accent)]"
+                    animate={{ scale: 1.8, opacity: 0 }}
+                    transition={{ repeat: Infinity, duration: 1.5, ease: "easeOut" }}
+                    className="absolute inset-0 rounded-full bg-white/30"
                   />
                 )}
-                <div className="relative z-10 w-32 h-32 rounded-full bg-[var(--color-bg-secondary)] border-4 border-[var(--color-bg-primary)] shadow-2xl flex items-center justify-center overflow-hidden">
-                  <User className="w-16 h-16 text-[var(--color-text-secondary)]" />
+                <div className="relative z-10 w-40 h-40 rounded-full bg-zinc-800 border-2 border-white/10 shadow-2xl flex items-center justify-center overflow-hidden">
+                  <User className="w-20 h-20 text-zinc-500" />
                 </div>
               </div>
 
-              <div className="mt-6 text-3xl font-light">
-                {callState === 'active' ? formatDuration(callDuration) : '...'}
+              {/* Name */}
+              <h2 className="text-3xl font-semibold tracking-tight">
+                {t.anonConfessor || 'Anonymous'}
+              </h2>
+
+              {/* Status / Duration */}
+              <div className="text-lg text-white/70 font-medium">
+                {callState === 'calling' && (t.calling || 'Calling...')}
+                {callState === 'incoming' && (t.incomingCall || 'Incoming Call')}
+                {callState === 'active' && (
+                  <span className="text-2xl font-mono tracking-widest">{formatDuration(callDuration)}</span>
+                )}
               </div>
 
-              {callState === 'active' && connectionQuality && (
-                <div className="flex items-center gap-2 mt-2 text-sm text-[var(--color-text-secondary)]">
-                  {connectionQuality === 'good' && <SignalHigh className="w-4 h-4 text-emerald-500" />}
+              {/* Connection Quality Alert (Optional) */}
+              {callState === 'active' && connectionQuality && connectionQuality !== 'good' && (
+                <div className="flex items-center gap-2 mt-4 text-sm bg-black/30 px-3 py-1.5 rounded-full text-white/80">
                   {connectionQuality === 'fair' && <SignalMedium className="w-4 h-4 text-amber-500" />}
                   {connectionQuality === 'poor' && <SignalLow className="w-4 h-4 text-red-500" />}
-                  {connectionQuality === 'disconnected' && <SignalZero className="w-4 h-4 text-[var(--color-text-secondary)]" />}
-                  <span className="capitalize">{connectionQuality} Connection</span>
+                  {connectionQuality === 'disconnected' && <SignalZero className="w-4 h-4 text-gray-400" />}
+                  <span className="capitalize">{connectionQuality}</span>
                 </div>
               )}
 
               {errorMsg && (
-                <div className="mt-4 text-sm text-red-400 bg-red-500/10 px-4 py-2 rounded-lg max-w-[80%] text-center">
+                <div className="mt-4 text-sm text-red-300 bg-red-900/30 px-4 py-2 rounded-xl max-w-[80%] text-center">
                   {errorMsg}
                 </div>
               )}
             </div>
 
             {/* Controls */}
-            <div className="flex items-center justify-center gap-8 mb-12">
+            <div className="flex flex-col items-center gap-8 w-full px-8 pb-8">
               {callState === 'incoming' ? (
-                <>
+                <div className="flex w-full justify-around items-center max-w-sm mx-auto">
                   <button 
                     onClick={() => endCall(true)}
-                    className="w-16 h-16 rounded-full bg-red-500 text-[var(--color-bg-primary)] flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform hover:scale-105"
+                    className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90"
                   >
-                    <PhoneOff className="w-6 h-6" />
+                    <PhoneOff className="w-7 h-7" />
                   </button>
                   <button 
                     onClick={acceptCall}
-                    className="w-16 h-16 rounded-full bg-[var(--color-accent)] text-[var(--color-bg-primary)] flex items-center justify-center shadow-lg hover:bg-[var(--color-accent-hover)] transition-transform hover:scale-105 animate-bounce"
+                    className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg hover:bg-emerald-600 transition-transform active:scale-90 animate-pulse"
                   >
-                    <PhoneCall className="w-6 h-6" />
+                    <PhoneCall className="w-7 h-7" />
                   </button>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center justify-center gap-8 bg-zinc-800/80 backdrop-blur-lg px-8 py-5 rounded-full shadow-2xl border border-white/5">
                   <button 
                     onClick={toggleMute}
-                    className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 ${isMuted ? 'bg-[var(--color-text-primary)] text-[var(--color-bg-primary)]' : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)]'}`}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
                     {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                   </button>
+                  
+                  <button className={`w-14 h-14 rounded-full flex items-center justify-center transition-all bg-white/10 text-white hover:bg-white/20`}>
+                    <Volume2 className="w-6 h-6" />
+                  </button>
+
                   <button 
                     onClick={() => endCall(true)}
-                    className="w-16 h-16 rounded-full bg-red-500 text-[var(--color-bg-primary)] flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform hover:scale-105"
+                    className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90"
                   >
-                    <PhoneOff className="w-6 h-6" />
+                    <PhoneOff className="w-7 h-7" />
                   </button>
-                </>
+                </div>
               )}
             </div>
           </motion.div>
