@@ -278,7 +278,6 @@ export default function App() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const emojis = ['❤️', '👍', '😢', '🙏', '✨'];
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -353,11 +352,6 @@ export default function App() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [activeReactionMsgId]);
-
-  useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(Date.now()), 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Matchmaking Logic
   useEffect(() => {
@@ -595,12 +589,16 @@ export default function App() {
     setInputText(e.target.value);
     if (!roomId || !user) return;
     
-    updateDoc(doc(db, 'rooms', roomId), {
-      [`typing.${user.uid}`]: true
-    }).catch(() => {});
+    if (!typingTimeoutRef.current) {
+      updateDoc(doc(db, 'rooms', roomId), {
+        [`typing.${user.uid}`]: true
+      }).catch(() => {});
+    }
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    
     typingTimeoutRef.current = setTimeout(() => {
+      typingTimeoutRef.current = null;
       updateDoc(doc(db, 'rooms', roomId), {
         [`typing.${user.uid}`]: false
       }).catch(() => {});
@@ -1100,7 +1098,7 @@ export default function App() {
                           <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Reply className="w-3.5 h-3.5" /></button>
                           {msg.sender === 'me' && (
                             <>
-                              {currentTime - msg.timestamp.getTime() <= 5 * 60 * 1000 && (
+                              {Date.now() - msg.timestamp.getTime() <= 5 * 60 * 1000 && (
                                 <button onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
                               )}
                               <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-red-400 rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
