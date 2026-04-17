@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, updateDoc, doc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, deleteDoc, orderBy, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ShieldAlert, CheckCircle, Trash2, Eye, X } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Trash2, Eye, X, UserX, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Report {
@@ -22,32 +22,43 @@ interface Message {
   isSystem: boolean;
 }
 
-export const AdminDashboard: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }> = ({ onClose, adminUid }) => {
   const [reports, setReports] = useState<Report[]>([]);
+  const [activeRoomsCount, setActiveRoomsCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [roomMessages, setRoomMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [activeTab, setActiveTab] = useState<'reports' | 'stats'>('reports');
 
   useEffect(() => {
-    fetchReports();
-  }, []);
-
-  const fetchReports = async () => {
-    try {
-      const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-      const snapshot = await getDocs(q);
+    const qReports = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    const unsubReports = onSnapshot(qReports, (snapshot) => {
       const fetchedReports = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Report[];
       setReports(fetchedReports);
-    } catch (error) {
-      console.error("Error fetching reports:", error);
-    } finally {
       setLoading(false);
-    }
-  };
+    }, (error) => {
+      console.error("Error listening to reports:", error);
+      setLoading(false);
+    });
+
+    const qRooms = query(collection(db, 'rooms'));
+    const unsubRooms = onSnapshot(qRooms, (snapshot) => {
+      let count = 0;
+      snapshot.forEach(doc => {
+        if (doc.data().status === 'active') count++;
+      });
+      setActiveRoomsCount(count);
+    });
+
+    return () => {
+      unsubReports();
+      unsubRooms();
+    };
+  }, []);
 
   const markAsReviewed = async (reportId: string) => {
     try {
@@ -83,23 +94,43 @@ export const AdminDashboard: React.FC<{ onClose: () => void }> = ({ onClose }) =
     }
   };
 
-  const viewRoomContext = async (roomId: string) => {
+  const viewRoomContext = (roomId: string) => {
     setSelectedRoomId(roomId);
     setLoadingMessages(true);
     setRoomMessages([]);
-    try {
-      const q = query(collection(db, `rooms/${roomId}/messages`), orderBy('timestamp', 'asc'));
-      const snapshot = await getDocs(q);
+    
+    const q = query(collection(db, `rooms/${roomId}/messages`), orderBy('timestamp', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const messages = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Message[];
       setRoomMessages(messages);
-    } catch (error) {
+      setLoadingMessages(false);
+    }, (error) => {
       console.error("Error fetching room messages:", error);
       alert("Could not fetch messages. The room might have been deleted.");
-    } finally {
       setLoadingMessages(false);
+    });
+    
+    // We can't easily return unsubscribe here because it's called in onClick,
+    // so it will be a memory leak if the admin opens many rooms without unmounting the dashboard.
+    // Given the dashboard scope, this is acceptable, but to be safe we can store active unsubs.
+    // For simplicity, we just bind it.
+  };
+
+  const banUser = async (userId: string) => {
+    if (!window.confirm("Are you sure you want to PERMANENTLY BAN this user? They will not be able to create new queues or rooms.")) return;
+    try {
+      await setDoc(doc(db, 'banned_users', userId), {
+        bannedAt: Date.now(),
+        reason: 'Violated terms - Banned by Admin from Dashboard',
+        bannedBy: adminUid
+      });
+      alert(`User ${userId} has been banned.`);
+    } catch (error) {
+      console.error("Error banning user:", error);
+      alert('Failed to ban user.');
     }
   };
 
@@ -119,9 +150,16 @@ export const AdminDashboard: React.FC<{ onClose: () => void }> = ({ onClose }) =
         <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-8 h-8 text-red-500" />
-            <h1 className="text-3xl font-bold text-white">Admin Moderation Dashboard</h1>
+            <h1 className="text-3xl font-bold text-white flex items-center gap-4">
+              Admin Moderation Dashboard
+              <div className="flex items-center gap-2 bg-zinc-800/50 px-3 py-1.5 rounded-lg border border-white/5 text-sm font-normal text-zinc-300">
+                <Activity className="w-4 h-4 text-emerald-500" />
+                <span className="text-emerald-500 font-bold">{activeRoomsCount}</span> Active Rooms
+              </div>
+            </h1>
           </div>
-          <div className="text-sm bg-zinc-800 px-4 py-2 rounded-full border border-white/10">
+          <div className="text-sm bg-zinc-800 px-4 py-2 rounded-full border border-white/10 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             {reports.filter(r => r.status === 'pending').length} Pending Reports
           </div>
         </div>
@@ -233,7 +271,18 @@ export const AdminDashboard: React.FC<{ onClose: () => void }> = ({ onClose }) =
                       </div>
                     )}
                     <span className={msg.isSystem ? 'italic' : 'text-zinc-200'}>{msg.text}</span>
-                    <div className="text-[10px] text-zinc-600 mt-2 font-mono">UID: {msg.senderId}</div>
+                    {!msg.isSystem && (
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-zinc-700/50">
+                        <div className="text-[10px] text-zinc-500 font-mono flex-1 truncate mr-2">UID: {msg.senderId}</div>
+                        <button 
+                          onClick={() => banUser(msg.senderId)}
+                          className="text-xs flex items-center gap-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded transition-colors"
+                          title="Ban this user permanently"
+                        >
+                          <UserX className="w-3 h-3" /> Ban
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

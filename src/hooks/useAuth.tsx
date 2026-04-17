@@ -27,17 +27,26 @@ interface AuthContextType {
   loading: boolean;
   login: () => Promise<void>;
   logout: () => void;
+  isBanned: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<UserStats | null>(null);
+  const [isBanned, setIsBanned] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        
+        // Listen to ban status
+        const banRef = doc(db, 'banned_users', firebaseUser.uid);
+        const unsubBan = onSnapshot(banRef, (snap) => {
+          setIsBanned(snap.exists());
+        }, () => {});
+
         const userRef = doc(db, 'users', firebaseUser.uid);
         
         // Listen to user document
@@ -67,9 +76,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
         });
         
-        return () => unsubDoc();
+        return () => {
+          unsubDoc();
+          unsubBan();
+        };
       } else {
         setUser(null);
+        setIsBanned(false);
         setLoading(false);
       }
     });
@@ -90,7 +103,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, isBanned }}>
       {children}
     </AuthContext.Provider>
   );

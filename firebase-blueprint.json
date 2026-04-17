@@ -10,6 +10,17 @@
       },
       "required": ["uid", "isAdmin"]
     },
+    "BannedUser": {
+      "title": "Banned User",
+      "description": "Registry of banned user UIDs",
+      "type": "object",
+      "properties": {
+        "bannedAt": { "type": "number" },
+        "reason": { "type": "string" },
+        "bannedBy": { "type": "string" }
+      },
+      "required": ["bannedAt", "reason", "bannedBy"]
+    },
     "User": {
       "title": "User",
       "description": "A user of the Confessio app (anonymous)",

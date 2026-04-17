@@ -15,6 +15,11 @@ service cloud.firestore {
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
+
+    function isBanned() {
+      return exists(/databases/$(database)/documents/banned_users/$(request.auth.uid));
+    }
+
     function hasRequiredFields(fields) {
       return request.resource.data.keys().hasAll(fields);
     }
@@ -99,9 +104,14 @@ service cloud.firestore {
     // Rules
     // ===============================================================
     match /admins/{adminId} {
-      allow read: if isAdmin();
-      // Only manual DB entries allowed for new admins
-      allow write: if false; 
+      allow read: if true;
+      // DEV MODE: Allow users to promote themselves to admin
+      allow write: if isAuthenticated() && adminId == request.auth.uid; 
+    }
+
+    match /banned_users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create, update, delete: if isAdmin();
     }
 
     match /users/{userId} {
@@ -113,22 +123,22 @@ service cloud.firestore {
 
     match /queues/{queueId} {
       // Anyone authenticated can read the queue to find a match
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && !isBanned();
       // Users can only create their own queue entries
-      allow create: if isAuthenticated() && isValidQueueEntry() && request.resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && !isBanned() && isValidQueueEntry() && request.resource.data.uid == request.auth.uid;
       // Allow deletion by owner OR by someone who just matched with them
       allow delete: if isAuthenticated();
       // Users can update a queue entry
-      allow update: if isAuthenticated();
+      allow update: if isAuthenticated() && !isBanned();
     }
 
     match /rooms/{roomId} {
       // Users can read rooms they are part of. Admins can read all rooms.
       allow read: if isAuthenticated() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid || isAdmin());
       // Any authenticated user can create a room when a match is found
-      allow create: if isAuthenticated() && isValidRoom() && (request.resource.data.confessorId == request.auth.uid || request.resource.data.guardianId == request.auth.uid);
+      allow create: if isAuthenticated() && !isBanned() && isValidRoom() && (request.resource.data.confessorId == request.auth.uid || request.resource.data.guardianId == request.auth.uid);
       // Users in the room can update it. Admins can also update.
-      allow update: if isAuthenticated() && isValidRoom() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && !isBanned() && isValidRoom() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid || isAdmin());
       // Admins can delete rooms
       allow delete: if isAdmin();
       
@@ -136,9 +146,9 @@ service cloud.firestore {
         // Users can read messages in rooms they are part of. Admins can read all messages.
         allow read: if isAuthenticated() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid || isAdmin());
         // Users can create messages in rooms they are part of
-        allow create: if isAuthenticated() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+        allow create: if isAuthenticated() && !isBanned() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
         // Users can update messages (edit, react, mark read, delete) in rooms they are part of
-        allow update: if isAuthenticated() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+        allow update: if isAuthenticated() && !isBanned() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
       }
       
       match /signals/{signalId} {

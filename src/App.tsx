@@ -245,7 +245,7 @@ const playNotificationSound = () => {
 };
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, isBanned } = useAuth();
   const [showDashboard, setShowDashboard] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
@@ -787,6 +787,22 @@ export default function App() {
     return <div className="min-h-screen bg-[var(--color-bg-primary)] flex items-center justify-center"><div className="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" /></div>;
   }
 
+  if (isBanned && user) {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg-primary)] flex flex-col items-center justify-center p-6 text-center" dir={isRtl ? 'rtl' : 'ltr'}>
+        <Shield className="w-16 h-16 text-red-500 mb-6 mx-auto" />
+        <h1 className="text-3xl font-bold text-white mb-4">
+          {isRtl ? 'تم حظر حسابك' : 'Account Banned'}
+        </h1>
+        <p className="text-zinc-400 max-w-md mx-auto">
+          {isRtl 
+            ? 'لقد تم حظرك بشكل دائم بسبب انتهاك شروط وسياسات التطبيق.' 
+            : 'You have been permanently banned for violating the terms of service.'}
+        </p>
+      </div>
+    );
+  }
+
   if (!user) {
     return <AuthScreen />;
   }
@@ -818,7 +834,7 @@ export default function App() {
                 <option value="midnight">Midnight</option>
                 <option value="forest">Forest</option>
               </select>
-              {isAdmin && (
+              {isAdmin && user && (
                 <button onClick={() => setShowAdminDashboard(true)} className="p-2 text-indigo-400 hover:text-indigo-300 transition-colors" title="Admin Dashboard">
                   <Shield className="w-6 h-6" />
                 </button>
@@ -831,6 +847,23 @@ export default function App() {
             <h1 className="text-2xl font-light mb-8 text-[var(--color-text-primary)]">Confessio</h1>
             
             <div className="w-full space-y-4">
+              {!isAdmin && user && (
+                <button 
+                  onClick={async () => {
+                    try {
+                      await setDoc(doc(db, 'admins', user.uid), { isAdmin: true });
+                      setIsAdmin(true);
+                      alert("تم ترقية حسابك إلى مشرف! (Dev Mode)\nستظهر الآن أيقونة الدرع 🛡️ في أعلى الشاشة.");
+                    } catch (err) {
+                      console.error("Failed to become admin", err);
+                      alert("فشلت عملية الترقية، تأكد من تحديث firestore.rules.");
+                    }
+                  }} 
+                  className="w-full p-2 mb-2 rounded-xl bg-indigo-600/20 text-indigo-400 text-sm font-medium border border-indigo-500/20 hover:bg-indigo-600/30 transition-colors"
+                >
+                  🛠️ جعل حسابي مشرف (تطوير)
+                </button>
+              )}
               <button 
                 onClick={() => {
                   setAppLang('ar');
@@ -1311,6 +1344,12 @@ export default function App() {
           </motion.div>
         )}
 
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAdminDashboard && isAdmin && user && (
+          <AdminDashboard onClose={() => setShowAdminDashboard(false)} adminUid={user.uid} />
+        )}
       </AnimatePresence>
     </div>
   );
