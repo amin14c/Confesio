@@ -340,6 +340,16 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
+    if (user && localStorage.getItem('quick_confess') === 'true') {
+        localStorage.removeItem('quick_confess');
+        setAppLang('ar');
+        setCommLang('ar');
+        setRole('confessor');
+        setStep('ritual');
+    }
+  }, [user]);
+
+  useEffect(() => {
     let interval: NodeJS.Timeout;
     if (step === 'ritual') {
       setWaitingTime(0);
@@ -821,6 +831,22 @@ export default function App() {
             <h1 className="text-2xl font-light mb-8 text-[var(--color-text-primary)]">Confessio</h1>
             
             <div className="w-full space-y-4">
+              <button 
+                onClick={() => {
+                  setAppLang('ar');
+                  setCommLang('ar');
+                  setRole('confessor');
+                  setStep('ritual');
+                }} 
+                className="w-full relative group overflow-hidden p-4 rounded-xl bg-emerald-600/20 border border-emerald-500/20 hover:border-emerald-500/40 transition-all flex justify-center items-center gap-2 text-emerald-500 mb-6"
+              >
+                <div className="absolute inset-0 bg-emerald-500/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                <svg className="w-5 h-5 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span className="font-medium text-lg relative z-10 font-sans">التسجيل السريع كمعترف</span>
+              </button>
+
               <button onClick={() => handleAppLangSelect('en')} className="w-full p-4 rounded-xl bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] hover:opacity-80 transition-opacity flex justify-between items-center">
                 <span className="font-medium">English</span>
               </button>

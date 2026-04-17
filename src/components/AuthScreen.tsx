@@ -44,9 +44,26 @@ export const AuthScreen = () => {
           <button 
             onClick={handleEnter}
             disabled={loading}
-            className="w-full py-4 bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 border border-amber-500/20 rounded-xl transition-colors font-medium disabled:opacity-50 text-lg"
+            className="w-full py-4 bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 border border-amber-500/20 rounded-xl transition-colors font-medium disabled:opacity-50 text-lg mb-3"
           >
-            {loading ? 'جاري الدخول...' : 'ادخل بهوية مجهولة'}
+            {loading ? 'جاري الدخول...' : 'البدء وتخصيص الجلسة'}
+          </button>
+
+          <button 
+            onClick={() => {
+              localStorage.setItem('quick_confess', 'true');
+              handleEnter();
+            }}
+            disabled={loading}
+            className="w-full py-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-500 border border-emerald-500/20 rounded-xl transition-colors font-medium disabled:opacity-50 text-lg relative overflow-hidden group"
+          >
+            <div className="absolute inset-0 bg-emerald-500/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            <span className="relative flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              التسجيل السريع كمعترف
+            </span>
           </button>
         </div>
       </motion.div>
