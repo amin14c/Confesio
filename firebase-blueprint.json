@@ -1,5 +1,15 @@
 {
   "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrator account",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["uid", "isAdmin"]
+    },
     "User": {
       "title": "User",
       "description": "A user of the Confessio app (anonymous)",
@@ -40,7 +50,8 @@
         "guardianId": { "type": "string" },
         "lang": { "type": "string" },
         "status": { "type": "string", "enum": ["active", "ended"] },
-        "createdAt": { "type": "number" }
+        "createdAt": { "type": "number" },
+        "typing": { "type": "object" }
       },
       "required": ["confessorId", "guardianId", "lang", "status", "createdAt"]
     },
@@ -51,8 +62,14 @@
       "properties": {
         "text": { "type": "string" },
         "senderId": { "type": "string" },
-        "role": { "type": "string", "enum": ["confessor", "guardian"] },
-        "timestamp": { "type": "number" }
+        "role": { "type": "string", "enum": ["confessor", "guardian", "system"] },
+        "timestamp": { "type": "number" },
+        "reaction": { "type": ["string", "null"] },
+        "replyToId": { "type": ["string", "null"] },
+        "replyToText": { "type": ["string", "null"] },
+        "isDeleted": { "type": "boolean" },
+        "isEdited": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["sent", "read"] }
       },
       "required": ["text", "senderId", "role", "timestamp"]
     },
@@ -61,12 +78,12 @@
       "description": "WebRTC signaling data for audio calls",
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["offer", "answer", "candidate"] },
+        "type": { "type": "string", "enum": ["offer", "answer", "candidate", "end"] },
         "senderId": { "type": "string" },
         "data": { "type": "string" },
         "timestamp": { "type": "number" }
       },
-      "required": ["type", "senderId", "data", "timestamp"]
+      "required": ["type", "senderId", "timestamp"]
     },
     "Report": {
       "title": "Report",
@@ -83,6 +100,10 @@
     }
   },
   "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Admin privileges registry"
+    },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profiles"

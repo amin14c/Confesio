@@ -5,8 +5,9 @@ import { useAuth } from './hooks/useAuth';
 import { AuthScreen } from './components/AuthScreen';
 import { AccountDashboard } from './components/AccountDashboard';
 import { AudioCall } from './components/AudioCall';
+import { AdminDashboard } from './components/AdminDashboard';
 import { db, auth, messaging } from './firebase';
-import { collection, doc, setDoc, getDocs, query, where, onSnapshot, deleteDoc, addDoc, orderBy, updateDoc, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, deleteDoc, addDoc, orderBy, updateDoc, limit } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 
 enum OperationType {
@@ -246,6 +247,8 @@ const playNotificationSound = () => {
 export default function App() {
   const { user, loading } = useAuth();
   const [showDashboard, setShowDashboard] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [appLang, setAppLang] = useState<AppLanguage>('en');
   const [theme, setTheme] = useState<'dark' | 'light' | 'midnight' | 'forest'>('dark');
   const [step, setStep] = useState<Step>('app-lang');
@@ -278,6 +281,26 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (user) {
+        try {
+          const adminDoc = await getDoc(doc(db, 'admins', user.uid));
+          if (adminDoc.exists() && adminDoc.data().isAdmin === true) {
+            setIsAdmin(true);
+          } else {
+            setIsAdmin(false);
+          }
+        } catch (error) {
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    checkAdminStatus();
+  }, [user]);
 
   useEffect(() => {
     if (user && messaging) {
@@ -761,6 +784,7 @@ export default function App() {
   return (
     <div dir={isRtl ? 'rtl' : 'ltr'} className={`min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] flex flex-col font-sans selection:bg-[var(--color-accent)] selection:text-white relative transition-colors duration-500`}>
       {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} appLang={appLang} setAppLang={setAppLang} />}
+      {showAdminDashboard && <AdminDashboard />}
       
       <AnimatePresence mode="wait">
         
@@ -784,6 +808,11 @@ export default function App() {
                 <option value="midnight">Midnight</option>
                 <option value="forest">Forest</option>
               </select>
+              {isAdmin && (
+                <button onClick={() => setShowAdminDashboard(true)} className="p-2 text-indigo-400 hover:text-indigo-300 transition-colors" title="Admin Dashboard">
+                  <Shield className="w-6 h-6" />
+                </button>
+              )}
               <button onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
                 <UserCircle className="w-8 h-8" />
               </button>

@@ -7,6 +7,11 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+    
+    function isAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -47,29 +52,36 @@ service cloud.firestore {
 
     function isValidRoom() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['confessorId', 'guardianId', 'lang', 'status', 'createdAt']) &&
+      return hasOnlyAllowedFields(['confessorId', 'guardianId', 'lang', 'status', 'createdAt', 'typing']) &&
              data.confessorId is string && data.confessorId.size() > 0 &&
              data.guardianId is string && data.guardianId.size() > 0 &&
              data.lang is string && data.lang.size() > 0 && data.lang.size() <= 10 &&
              data.status in ['active', 'ended'] &&
-             data.createdAt is number;
+             data.createdAt is number &&
+             (!('typing' in data) || data.typing is map);
     }
 
     function isValidMessage() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['text', 'senderId', 'role', 'timestamp']) &&
+      return hasOnlyAllowedFields(['text', 'senderId', 'role', 'timestamp', 'reaction', 'replyToId', 'replyToText', 'isDeleted', 'isEdited', 'status']) &&
              data.text is string && data.text.size() > 0 && data.text.size() <= 2000 &&
-             data.senderId == request.auth.uid &&
-             data.role in ['confessor', 'guardian'] &&
-             data.timestamp is number;
+             (data.senderId == request.auth.uid || data.senderId == 'system') &&
+             data.role in ['confessor', 'guardian', 'system'] &&
+             data.timestamp is number &&
+             (!('reaction' in data) || data.reaction == null || data.reaction is string) &&
+             (!('replyToId' in data) || data.replyToId == null || data.replyToId is string) &&
+             (!('replyToText' in data) || data.replyToText == null || data.replyToText is string) &&
+             (!('isDeleted' in data) || data.isDeleted is bool) &&
+             (!('isEdited' in data) || data.isEdited is bool) &&
+             (!('status' in data) || data.status in ['sent', 'read']);
     }
 
     function isValidSignal() {
       let data = request.resource.data;
       return hasOnlyAllowedFields(['type', 'senderId', 'data', 'timestamp']) &&
-             data.type in ['offer', 'answer', 'candidate'] &&
+             data.type in ['offer', 'answer', 'candidate', 'end'] &&
              data.senderId == request.auth.uid &&
-             data.data is string && data.data.size() > 0 && data.data.size() <= 10000 &&
+             (!('data' in data) || (data.data is string && data.data.size() > 0 && data.data.size() <= 10000)) &&
              data.timestamp is number;
     }
 
@@ -86,10 +98,17 @@ service cloud.firestore {
     // ===============================================================
     // Rules
     // ===============================================================
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      // Only manual DB entries allowed for new admins
+      allow write: if false; 
+    }
+
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && isValidUser();
-      allow update: if isOwner(userId) && isValidUser();
+      allow update: if (isOwner(userId) && isValidUser()) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /queues/{queueId} {
@@ -97,25 +116,29 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       // Users can only create their own queue entries
       allow create: if isAuthenticated() && isValidQueueEntry() && request.resource.data.uid == request.auth.uid;
-      // Allow deletion by owner OR by someone who just matched with them (we'll trust authenticated users to clean up queues for now to keep it simple)
+      // Allow deletion by owner OR by someone who just matched with them
       allow delete: if isAuthenticated();
       // Users can update a queue entry
       allow update: if isAuthenticated();
     }
 
     match /rooms/{roomId} {
-      // Users can read rooms they are part of
-      allow read: if isAuthenticated() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid);
+      // Users can read rooms they are part of. Admins can read all rooms.
+      allow read: if isAuthenticated() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid || isAdmin());
       // Any authenticated user can create a room when a match is found
       allow create: if isAuthenticated() && isValidRoom() && (request.resource.data.confessorId == request.auth.uid || request.resource.data.guardianId == request.auth.uid);
-      // Users in the room can update it (e.g. to end the session)
-      allow update: if isAuthenticated() && isValidRoom() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid);
+      // Users in the room can update it. Admins can also update.
+      allow update: if isAuthenticated() && isValidRoom() && (resource.data.confessorId == request.auth.uid || resource.data.guardianId == request.auth.uid || isAdmin());
+      // Admins can delete rooms
+      allow delete: if isAdmin();
       
       match /messages/{messageId} {
-        // Users can read messages in rooms they are part of
-        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+        // Users can read messages in rooms they are part of. Admins can read all messages.
+        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid || isAdmin());
         // Users can create messages in rooms they are part of
         allow create: if isAuthenticated() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
+        // Users can update messages (edit, react, mark read, delete) in rooms they are part of
+        allow update: if isAuthenticated() && isValidMessage() && (get(/databases/$(database)/documents/rooms/$(roomId)).data.confessorId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.guardianId == request.auth.uid);
       }
       
       match /signals/{signalId} {
@@ -127,7 +150,11 @@ service cloud.firestore {
     }
 
     match /reports/{reportId} {
+      allow read: if isAdmin();
       allow create: if isAuthenticated() && isValidReport();
+      // Admins can update status (e.g., pending -> reviewed)
+      allow update: if isAdmin(); 
+      allow delete: if isAdmin();
     }
   }
 }
