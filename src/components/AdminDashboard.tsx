@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, getDocs, updateDoc, doc, deleteDoc, orderBy, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, updateDoc, doc, deleteDoc, orderBy, setDoc, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ShieldAlert, CheckCircle, Trash2, Eye, X, UserX, Activity } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Trash2, Eye, X, UserX, Activity, Users, FileWarning, BarChart, Unlock, Calendar, Award, Star, Flag, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Report {
@@ -22,23 +22,37 @@ interface Message {
   isSystem: boolean;
 }
 
+interface UserData {
+  uid: string;
+  createdAt: number;
+  credits: number;
+  badges: string[];
+  completed_sessions: number;
+  avg_rating: number;
+  lastSeen: number;
+}
+
 export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }> = ({ onClose, adminUid }) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'users'>('overview');
   const [reports, setReports] = useState<Report[]>([]);
   const [activeRoomsCount, setActiveRoomsCount] = useState<number>(0);
+  const [usersList, setUsersList] = useState<UserData[]>([]);
+  const [bannedUids, setBannedUids] = useState<Set<string>>(new Set());
+  const [totalSessions, setTotalSessions] = useState<number>(0);
+  
   const [loading, setLoading] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [roomMessages, setRoomMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [activeTab, setActiveTab] = useState<'reports' | 'stats'>('reports');
+  const [searchQuery, setSearchQuery] = useState('');
 
+  // Main real-time listeners for Reports, Bans, and Rooms
   useEffect(() => {
     const qReports = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
     const unsubReports = onSnapshot(qReports, (snapshot) => {
-      const fetchedReports = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Report[];
-      setReports(fetchedReports);
+      setReports(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Report[]);
       setLoading(false);
     }, (error) => {
       console.error("Error listening to reports:", error);
@@ -54,39 +68,65 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
       setActiveRoomsCount(count);
     });
 
+    const qBans = query(collection(db, 'banned_users'));
+    const unsubBans = onSnapshot(qBans, (snapshot) => {
+      const bans = new Set<string>();
+      snapshot.forEach(doc => bans.add(doc.id));
+      setBannedUids(bans);
+    });
+
     return () => {
       unsubReports();
       unsubRooms();
+      unsubBans();
     };
+  }, []);
+
+  // Fetch users only once on mount
+  useEffect(() => {
+    const fetchUsersData = async () => {
+      try {
+        setLoadingUsers(true);
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const usersData = usersSnap.docs.map(doc => doc.data() as UserData);
+        setUsersList(usersData);
+        
+        let sessions = 0;
+        usersData.forEach(u => sessions += (u.completed_sessions || 0));
+        setTotalSessions(Math.floor(sessions / 2)); // Divide by 2 as two users share a session
+        
+        setLoadingUsers(false);
+      } catch (err) {
+        console.error("Error fetching users:", err);
+        setLoadingUsers(false);
+      }
+    };
+    fetchUsersData();
   }, []);
 
   const markAsReviewed = async (reportId: string) => {
     try {
-      await updateDoc(doc(db, 'reports', reportId), {
-        status: 'reviewed'
-      });
-      setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: 'reviewed' } : r));
+      await updateDoc(doc(db, 'reports', reportId), { status: 'reviewed' });
     } catch (error) {
       console.error("Error updating report:", error);
     }
   };
 
   const deleteReport = async (reportId: string) => {
-    if (!window.confirm("Are you sure you want to delete this report?")) return;
+    if (!window.confirm("Delete this report?")) return;
     try {
       await deleteDoc(doc(db, 'reports', reportId));
-      setReports(prev => prev.filter(r => r.id !== reportId));
     } catch (error) {
       console.error("Error deleting report:", error);
     }
   };
 
   const deleteRoom = async (roomId: string) => {
-    if (!window.confirm("Are you sure you want to delete this abusive room and end the session?")) return;
+    if (!window.confirm("Delete this room and forcibly end session?")) return;
     try {
       await updateDoc(doc(db, 'rooms', roomId), { status: 'ended' });
       await deleteDoc(doc(db, 'rooms', roomId));
-      alert('Room deleted successfully.');
+      alert('Room successfully terminated.');
       setSelectedRoomId(null);
     } catch (error) {
       console.error("Error deleting room:", error);
@@ -100,196 +140,343 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
     setRoomMessages([]);
     
     const q = query(collection(db, `rooms/${roomId}/messages`), orderBy('timestamp', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const messages = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Message[];
-      setRoomMessages(messages);
+    onSnapshot(q, (snapshot) => {
+      setRoomMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Message[]);
       setLoadingMessages(false);
     }, (error) => {
       console.error("Error fetching room messages:", error);
-      alert("Could not fetch messages. The room might have been deleted.");
       setLoadingMessages(false);
     });
-    
-    // We can't easily return unsubscribe here because it's called in onClick,
-    // so it will be a memory leak if the admin opens many rooms without unmounting the dashboard.
-    // Given the dashboard scope, this is acceptable, but to be safe we can store active unsubs.
-    // For simplicity, we just bind it.
   };
 
-  const banUser = async (userId: string) => {
-    if (!window.confirm("Are you sure you want to PERMANENTLY BAN this user? They will not be able to create new queues or rooms.")) return;
-    try {
-      await setDoc(doc(db, 'banned_users', userId), {
-        bannedAt: Date.now(),
-        reason: 'Violated terms - Banned by Admin from Dashboard',
-        bannedBy: adminUid
-      });
-      alert(`User ${userId} has been banned.`);
-    } catch (error) {
-      console.error("Error banning user:", error);
-      alert('Failed to ban user.');
+  const toggleBanUser = async (userId: string, currentlyBanned: boolean) => {
+    if (currentlyBanned) {
+      if (!window.confirm("Unban this user? They will be able to access the platform again.")) return;
+      try {
+        await deleteDoc(doc(db, 'banned_users', userId));
+      } catch (error) {
+        console.error("Error unbanning:", error);
+      }
+    } else {
+      if (!window.confirm("PERMANENTLY BAN this user? They will be blocked from matching.")) return;
+      try {
+        await setDoc(doc(db, 'banned_users', userId), {
+          bannedAt: Date.now(),
+          reason: 'Dashboard Admin Action',
+          bannedBy: adminUid
+        });
+      } catch (error) {
+        console.error("Error banning:", error);
+      }
     }
   };
 
-  if (loading) {
-    return <div className="p-8 text-center text-white">Loading admin dashboard...</div>;
-  }
+  const filteredUsers = usersList.filter(u => 
+    u.uid.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const statsCards = [
+    { label: 'Total Users', value: usersList.length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { label: 'Active Live Rooms', value: activeRoomsCount, icon: Activity, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { label: 'Total Sessions', value: totalSessions, icon: CheckCircle, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+    { label: 'Pending Reports', value: reports.filter(r => r.status === 'pending').length, icon: FileWarning, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+  ];
+
+  if (loading) return <div className="fixed inset-0 z-50 bg-[#09090b] flex items-center justify-center text-zinc-500">Loading Command Center...</div>;
 
   return (
-    <div className="fixed inset-0 z-50 bg-zinc-950 overflow-y-auto">
-      <div className="max-w-6xl mx-auto p-6 text-[var(--color-text-primary)] relative mt-8">
-        <button 
-          onClick={onClose}
-          className="absolute -top-4 right-6 p-2 bg-zinc-800 text-white rounded-full hover:bg-zinc-700 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <ShieldAlert className="w-8 h-8 text-red-500" />
-            <h1 className="text-3xl font-bold text-white flex items-center gap-4">
-              Admin Moderation Dashboard
-              <div className="flex items-center gap-2 bg-zinc-800/50 px-3 py-1.5 rounded-lg border border-white/5 text-sm font-normal text-zinc-300">
-                <Activity className="w-4 h-4 text-emerald-500" />
-                <span className="text-emerald-500 font-bold">{activeRoomsCount}</span> Active Rooms
-              </div>
-            </h1>
-          </div>
-          <div className="text-sm bg-zinc-800 px-4 py-2 rounded-full border border-white/10 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            {reports.filter(r => r.status === 'pending').length} Pending Reports
+    <div className="fixed inset-0 z-50 bg-[#09090b] text-zinc-200 flex font-sans overflow-hidden">
+      {/* Sidebar Navigation */}
+      <aside className="w-72 bg-zinc-950 border-r border-white/5 flex flex-col relative z-20 shadow-2xl">
+        <div className="p-8 border-b border-white/5">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <ShieldAlert className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white tracking-tight">Confessio</h1>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold flex items-center gap-1">Command Center <Award className="w-3 h-3 text-amber-500"/></p>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Reports List */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold mb-4 text-white">Recent Reports</h2>
-            {reports.length === 0 ? (
-              <div className="text-zinc-500 italic">No reports found.</div>
-            ) : (
-              reports.map(report => (
-                <div 
-                  key={report.id} 
-                  className={`p-4 rounded-xl border transition-colors ${
-                    report.status === 'pending' ? 'bg-red-500/10 border-red-500/30' : 'bg-zinc-900 border-zinc-800'
-                  } ${selectedRoomId === report.roomId ? 'ring-2 ring-indigo-500' : ''}`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${report.status === 'pending' ? 'bg-red-500 text-white' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                        {report.status}
-                      </span>
-                      <span className="text-sm text-zinc-400">
-                        {new Date(report.timestamp).toLocaleString()}
-                      </span>
+        <nav className="flex-1 p-4 space-y-2">
+          <button 
+            onClick={() => setActiveTab('overview')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === 'overview' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
+          >
+            <BarChart className="w-5 h-5" /> Overview
+          </button>
+          <button 
+            onClick={() => setActiveTab('moderation')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all font-medium ${activeTab === 'moderation' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
+          >
+            <div className="flex items-center gap-3">
+              <Flag className="w-5 h-5" /> Moderation
+            </div>
+            {reports.filter(r => r.status === 'pending').length > 0 && (
+              <span className="bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center justify-center min-w-[20px]">
+                {reports.filter(r => r.status === 'pending').length}
+              </span>
+            )}
+          </button>
+          <button 
+            onClick={() => setActiveTab('users')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all font-medium ${activeTab === 'users' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
+          >
+            <div className="flex items-center gap-3">
+              <Users className="w-5 h-5" /> Users
+            </div>
+            {bannedUids.size > 0 && (
+              <span className="text-zinc-500 text-xs">{bannedUids.size} Banned</span>
+            )}
+          </button>
+        </nav>
+
+        <div className="p-6 border-t border-white/5">
+          <button 
+            onClick={onClose}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-white/5 hover:bg-rose-500/10 hover:text-rose-500 hover:border-rose-500/20 text-zinc-400 rounded-xl transition-all font-medium shadow-sm"
+          >
+            <X className="w-4 h-4" /> Exit Dashboard
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto bg-[#09090b] relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-rose-500/5 pointer-events-none" />
+        
+        <div className="relative z-10 p-10 max-w-7xl mx-auto min-h-full">
+          
+          <AnimatePresence mode="wait">
+            {activeTab === 'overview' && (
+              <motion.div key="overview" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                <header className="mb-10">
+                  <h2 className="text-3xl font-bold text-white tracking-tight">Platform Overview</h2>
+                  <p className="text-zinc-400 mt-1">Real-time statistics and platform health.</p>
+                </header>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                  {statsCards.map((stat, idx) => (
+                    <div key={idx} className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 rounded-2xl p-6 relative overflow-hidden group hover:border-white/10 transition-colors shadow-2xl">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${stat.bg} ${stat.color}`}>
+                        <stat.icon className="w-6 h-6" />
+                      </div>
+                      <div className="text-4xl font-black text-white tracking-tighter mb-1 relative z-10">{stat.value}</div>
+                      <div className="text-sm text-zinc-400 font-medium relative z-10">{stat.label}</div>
+                      <div className={`absolute -bottom-6 -right-6 w-24 h-24 ${stat.bg} rounded-full blur-2xl opacity-50 group-hover:scale-150 transition-transform duration-500`} />
                     </div>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => viewRoomContext(report.roomId)}
-                        className="p-2 bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 rounded-lg transition-colors"
-                        title="View Chat Context"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      {report.status === 'pending' && (
-                        <button 
-                          onClick={() => markAsReviewed(report.id)}
-                          className="p-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg transition-colors"
-                          title="Mark as Reviewed"
-                        >
-                          <CheckCircle className="w-4 h-4" />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'moderation' && (
+              <motion.div key="moderation" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="h-[calc(100vh-80px)] flex flex-col">
+                <header className="mb-8 shrink-0">
+                  <h2 className="text-3xl font-bold text-white tracking-tight">Safety & Moderation</h2>
+                  <p className="text-zinc-400 mt-1">Review user reports and intervene in active sessions.</p>
+                </header>
+
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-0">
+                  {/* Reports List Pane */}
+                  <div className="lg:col-span-4 xl:col-span-5 bg-zinc-900/50 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+                    <div className="p-4 border-b border-white/5 bg-zinc-900/80">
+                      <h3 className="font-semibold text-white flex items-center gap-2">
+                        <Flag className="w-4 h-4 text-zinc-400" /> Report Queue
+                      </h3>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                      {reports.length === 0 ? (
+                        <div className="text-center text-zinc-500 italic py-10">Inbox zero! No active reports.</div>
+                      ) : (
+                        reports.map(report => (
+                          <div 
+                            key={report.id} 
+                            onClick={() => viewRoomContext(report.roomId)}
+                            className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                              selectedRoomId === report.roomId ? 'bg-indigo-500/10 border-indigo-500/30 shadow-lg' : 
+                              report.status === 'pending' ? 'bg-rose-500/5 border-rose-500/20 hover:border-rose-500/40' : 
+                              'bg-zinc-900/50 border-white/5 hover:border-white/10'
+                            }`}
+                          >
+                            <div className="flex justify-between items-start mb-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${report.status === 'pending' ? 'bg-rose-500/20 text-rose-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                {report.status}
+                              </span>
+                              <span className="text-xs text-zinc-500 font-medium">
+                                {new Date(report.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-sm mb-4 bg-black/20 p-2 rounded-lg">
+                              <div className="flex justify-between"><span className="text-zinc-500">Target Role:</span> <span className="text-amber-400 capitalize font-medium">{report.reportedRole}</span></div>
+                              <div className="flex justify-between"><span className="text-zinc-500">Room:</span> <span className="font-mono text-xs text-zinc-400 truncate max-w-[100px]">{report.roomId}</span></div>
+                            </div>
+                            <div className="flex gap-2 pt-3 border-t border-white/5">
+                              {report.status === 'pending' && (
+                                <button onClick={(e) => { e.stopPropagation(); markAsReviewed(report.id); }} className="flex-1 py-1.5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-md transition-colors text-xs font-semibold flex items-center justify-center gap-1">
+                                  <CheckCircle className="w-3 h-3" /> Resolve
+                                </button>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); deleteReport(report.id); }} className="w-8 flex items-center justify-center bg-zinc-800 text-zinc-400 hover:bg-rose-500/20 hover:text-rose-400 rounded-md transition-colors shadow-sm">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Room Context Pane */}
+                  <div className="lg:col-span-8 xl:col-span-7 bg-zinc-950/50 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col overflow-hidden relative shadow-2xl">
+                    <div className="p-4 border-b border-white/5 bg-zinc-900/80 flex items-center justify-between shrink-0">
+                      <h3 className="font-semibold text-white flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-indigo-400" /> Evidence Viewer
+                      </h3>
+                      {selectedRoomId && (
+                        <button onClick={() => deleteRoom(selectedRoomId)} className="text-xs font-semibold text-rose-500 hover:bg-rose-500/10 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-sm">
+                          <Trash2 className="w-3 h-3" /> Force Terminate Session
                         </button>
                       )}
-                      <button 
-                        onClick={() => deleteReport(report.id)}
-                        className="p-2 bg-zinc-800 text-zinc-400 hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-colors"
-                        title="Delete Report"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
-                  </div>
-                  
-                  <div className="text-sm mt-3 space-y-1">
-                    <div><span className="text-zinc-500">Room ID:</span> <span className="font-mono text-zinc-300">{report.roomId}</span></div>
-                    <div><span className="text-zinc-500">Reported By:</span> <span className="font-mono text-zinc-300">{report.reportedBy}</span></div>
-                    <div><span className="text-zinc-500">Reported Role:</span> <span className="text-amber-400 capitalize">{report.reportedRole}</span></div>
+                    
+                    {!selectedRoomId ? (
+                      <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 p-8 text-center bg-black/20">
+                        <ShieldAlert className="w-12 h-12 mb-4 opacity-20" />
+                        <p>Select a report from the queue<br/>to review chat logs and take action.</p>
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-black/20">
+                        {loadingMessages ? (
+                          <div className="flex items-center justify-center h-full text-zinc-500 animate-pulse">Decrypting logs...</div>
+                        ) : roomMessages.length === 0 ? (
+                          <div className="flex items-center justify-center h-full text-zinc-500">Room terminated or no evidence found.</div>
+                        ) : (
+                          roomMessages.map(msg => (
+                            <div key={msg.id} className={`p-4 rounded-xl shadow-sm ${msg.isSystem ? 'bg-zinc-900/50 text-center mx-12 text-sm text-zinc-400 border border-white/5' : 'bg-zinc-900 border border-white/10 relative overflow-hidden'}`}>
+                              {!msg.isSystem && (
+                                <div className="flex justify-between items-center mb-2 relative z-10">
+                                  <span className={`text-xs font-bold uppercase tracking-wider ${msg.role === 'guardian' ? 'text-emerald-400' : 'text-indigo-400'}`}>
+                                    {msg.role}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500 font-medium">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                                </div>
+                              )}
+                              <p className={`text-sm relative z-10 ${msg.isSystem ? 'italic' : 'text-zinc-200'}`}>{msg.text}</p>
+                              {!msg.isSystem && (
+                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5 relative z-10">
+                                  <div className="text-[10px] text-zinc-600 font-mono truncate mr-2 bg-black/50 px-2 py-1 rounded">UID: {msg.senderId}</div>
+                                  <button onClick={() => toggleBanUser(msg.senderId, bannedUids.has(msg.senderId))} className={`text-xs font-bold px-3 py-1 rounded-md transition-colors flex items-center gap-1 shadow-sm ${bannedUids.has(msg.senderId) ? 'bg-zinc-800 text-emerald-400 hover:text-emerald-300' : 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/20'}`}>
+                                    {bannedUids.has(msg.senderId) ? <CheckCircle className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
+                                    {bannedUids.has(msg.senderId) ? 'Unban' : 'Ban'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))
+              </motion.div>
             )}
-          </div>
 
-          {/* Context Viewer */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 flex flex-col h-[80vh] sticky top-6">
-            <h2 className="text-xl font-semibold mb-4 text-white flex items-center justify-between">
-              Chat Context
-              {selectedRoomId && (
-                <div className="flex gap-4 items-center">
-                  <button 
-                    onClick={() => deleteRoom(selectedRoomId)}
-                    className="text-sm text-red-500 hover:bg-red-500/20 px-3 py-1 rounded-full transition-colors flex items-center gap-1"
-                    title="Delete Room & End Session for Users"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete Room
-                  </button>
-                  <button 
-                    onClick={() => setSelectedRoomId(null)}
-                    className="text-sm text-zinc-500 hover:text-white flex items-center gap-1"
-                  >
-                    <X className="w-4 h-4" /> Close
-                  </button>
-                </div>
-              )}
-            </h2>
-            
-            {!selectedRoomId ? (
-              <div className="flex-1 flex items-center justify-center text-zinc-600 border-2 border-dashed border-zinc-800 rounded-xl">
-                Select a report to view the chat context
-              </div>
-            ) : loadingMessages ? (
-              <div className="flex-1 flex items-center justify-center text-zinc-500">Loading messages...</div>
-            ) : roomMessages.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-zinc-500">No messages found or room was deleted.</div>
-            ) : (
-              <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                {roomMessages.map(msg => (
-                  <div 
-                    key={msg.id} 
-                    className={`p-3 rounded-lg ${msg.isSystem ? 'bg-zinc-800/50 text-center mx-12 text-sm text-zinc-400' : 'bg-zinc-800 border border-zinc-700'}`}
-                  >
-                    {!msg.isSystem && (
-                      <div className="flex justify-between items-center mb-1">
-                        <span className={`text-xs font-bold uppercase ${msg.role === 'guardian' ? 'text-emerald-400' : 'text-indigo-400'}`}>
-                          {msg.role}
-                        </span>
-                        <span className="text-[10px] text-zinc-500">{new Date(msg.timestamp).toLocaleTimeString()}</span>
-                      </div>
-                    )}
-                    <span className={msg.isSystem ? 'italic' : 'text-zinc-200'}>{msg.text}</span>
-                    {!msg.isSystem && (
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-zinc-700/50">
-                        <div className="text-[10px] text-zinc-500 font-mono flex-1 truncate mr-2">UID: {msg.senderId}</div>
-                        <button 
-                          onClick={() => banUser(msg.senderId)}
-                          className="text-xs flex items-center gap-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded transition-colors"
-                          title="Ban this user permanently"
-                        >
-                          <UserX className="w-3 h-3" /> Ban
-                        </button>
-                      </div>
-                    )}
+            {activeTab === 'users' && (
+              <motion.div key="users" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                <header className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-3xl font-bold text-white tracking-tight">User Management</h2>
+                    <p className="text-zinc-400 mt-1">Search, examine, and enforce policies on registered accounts.</p>
                   </div>
-                ))}
-              </div>
+                  <div className="relative">
+                    <Search className="w-5 h-5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input 
+                      type="text" 
+                      placeholder="Search by UID..." 
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="bg-zinc-900 shadow-inner border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all w-full sm:w-64"
+                    />
+                  </div>
+                </header>
+
+                <div className="bg-zinc-900/50 backdrop-blur-xl border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+                  {loadingUsers ? (
+                    <div className="p-12 text-center text-zinc-500 animate-pulse font-medium">Loading massive user database...</div>
+                  ) : (
+                    <div className="overflow-x-auto min-h-[500px]">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-zinc-900/80 border-b border-white/5 text-[10px] uppercase tracking-widest font-bold text-zinc-500">
+                            <th className="p-4 pl-6">User Identity</th>
+                            <th className="p-4">Standing</th>
+                            <th className="p-4">Platform Stats</th>
+                            <th className="p-4">Registration</th>
+                            <th className="p-4 text-right pr-6">Enforcement Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {filteredUsers.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="p-8 text-center text-zinc-500 italic">No users found matching query.</td>
+                            </tr>
+                          ) : (
+                            filteredUsers.map(u => {
+                              const isBanned = bannedUids.has(u.uid);
+                              return (
+                                <tr key={u.uid} className="hover:bg-white/5 transition-colors group">
+                                  <td className="p-4 pl-6">
+                                    <div className="font-mono text-sm text-zinc-300 font-medium">{u.uid}</div>
+                                    <div className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" /> Last online: {new Date(u.lastSeen || u.createdAt).toLocaleDateString()}
+                                    </div>
+                                  </td>
+                                  <td className="p-4">
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider shadow-sm ${isBanned ? 'bg-rose-500/20 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10'}`}>
+                                      {isBanned ? 'Permanently Banned' : 'In Good Standing'}
+                                    </span>
+                                  </td>
+                                  <td className="p-4">
+                                    <div className="flex gap-4 text-sm text-zinc-400">
+                                      <div className="flex items-center gap-1.5 bg-black/20 px-2 py-1 rounded border border-white/5" title="Completed Sessions">
+                                        <Activity className="w-3.5 h-3.5 text-emerald-500" /> <span className="font-medium text-zinc-300">{u.completed_sessions || 0}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 bg-black/20 px-2 py-1 rounded border border-white/5" title="Total Credits">
+                                        <Award className="w-3.5 h-3.5 text-amber-500" /> <span className="font-medium text-zinc-300">{u.credits || 0}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 bg-black/20 px-2 py-1 rounded border border-white/5" title="Average Rating">
+                                        <Star className="w-3.5 h-3.5 text-indigo-400" /> <span className="font-medium text-zinc-300">{(u.avg_rating || 0).toFixed(1)}</span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="p-4 text-sm text-zinc-400 font-medium whitespace-nowrap">
+                                    {new Date(u.createdAt).toLocaleDateString()}
+                                  </td>
+                                  <td className="p-4 pr-6 text-right">
+                                    <button 
+                                      onClick={() => toggleBanUser(u.uid, isBanned)}
+                                      className={`text-xs font-bold px-4 py-2 rounded-lg transition-colors border shadow-sm ${isBanned ? 'bg-zinc-800 text-zinc-300 border-white/10 hover:bg-zinc-700' : 'bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500 hover:text-white'}`}
+                                    >
+                                      {isBanned ? 'Revoke Ban' : 'Enforce Ban'}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             )}
-          </div>
+          </AnimatePresence>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
