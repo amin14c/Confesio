@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { handleFirestoreError } from '../App';
@@ -20,12 +20,16 @@ interface UserStats {
   guardian_sessions: number;
   avg_rating: number;
   lastSeen: number;
+  email?: string;
+  name?: string;
+  photoUrl?: string;
 }
 
 interface AuthContextType {
   user: UserStats | null;
   loading: boolean;
   login: () => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => void;
   isBanned: boolean;
 }
@@ -66,7 +70,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               confessions: 0,
               guardian_sessions: 0,
               avg_rating: 0,
-              lastSeen: Date.now()
+              lastSeen: Date.now(),
+              ...(firebaseUser.email ? { email: firebaseUser.email } : {}),
+              ...(firebaseUser.displayName ? { name: firebaseUser.displayName } : {}),
+              ...(firebaseUser.photoURL ? { photoUrl: firebaseUser.photoURL } : {})
             };
             setDoc(userRef, initialUser).catch(console.error);
             setUser(initialUser);
@@ -74,6 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setLoading(false);
         }, (error) => {
           handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
+          setLoading(false); // Make sure we stop loading on error as well
         });
         
         return () => {
@@ -98,12 +106,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const loginWithGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Error signing in with Google:", error);
+    }
+  };
+
   const logout = () => {
     auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isBanned }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, logout, isBanned }}>
       {children}
     </AuthContext.Provider>
   );

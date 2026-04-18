@@ -283,18 +283,10 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (user) {
-        try {
-          const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-          if (adminDoc.exists() && adminDoc.data().isAdmin === true) {
-            setIsAdmin(true);
-          } else {
-            setIsAdmin(false);
-          }
-        } catch (error) {
-          setIsAdmin(false);
-        }
+    const checkAdminStatus = () => {
+      // Check the underlying Firebase Auth user to see if it's the exact admin email
+      if (auth.currentUser && auth.currentUser.email === 'amin14c@gmail.com') {
+        setIsAdmin(true);
       } else {
         setIsAdmin(false);
       }
@@ -847,23 +839,6 @@ export default function App() {
             <h1 className="text-2xl font-light mb-8 text-[var(--color-text-primary)]">Confessio</h1>
             
             <div className="w-full space-y-4">
-              {!isAdmin && user && (
-                <button 
-                  onClick={async () => {
-                    try {
-                      await setDoc(doc(db, 'admins', user.uid), { isAdmin: true });
-                      setIsAdmin(true);
-                      alert("تم ترقية حسابك إلى مشرف! (Dev Mode)\nستظهر الآن أيقونة الدرع 🛡️ في أعلى الشاشة.");
-                    } catch (err) {
-                      console.error("Failed to become admin", err);
-                      alert("فشلت عملية الترقية، تأكد من تحديث firestore.rules.");
-                    }
-                  }} 
-                  className="w-full p-2 mb-2 rounded-xl bg-indigo-600/20 text-indigo-400 text-sm font-medium border border-indigo-500/20 hover:bg-indigo-600/30 transition-colors"
-                >
-                  🛠️ جعل حسابي مشرف (تطوير)
-                </button>
-              )}
               <button 
                 onClick={() => {
                   setAppLang('ar');

@@ -9,7 +9,11 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      // Very safely check email to avoid any Map property throwing errors
+      return request.auth != null && 
+             request.auth.token != null && 
+             request.auth.token.email != null && 
+             request.auth.token.email == 'amin14c@gmail.com';
     }
 
     function isOwner(userId) {
@@ -32,7 +36,7 @@ service cloud.firestore {
     // ===============================================================
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'createdAt', 'credits', 'dailyPoints', 'lastPointDate', 'badges', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen', 'fcmToken']) &&
+      return hasOnlyAllowedFields(['uid', 'createdAt', 'credits', 'dailyPoints', 'lastPointDate', 'badges', 'completed_sessions', 'confessions', 'guardian_sessions', 'avg_rating', 'lastSeen', 'fcmToken', 'email', 'name', 'photoUrl']) &&
              data.uid == request.auth.uid &&
              data.createdAt is number &&
              data.credits is number && data.credits >= 0 &&
@@ -44,7 +48,10 @@ service cloud.firestore {
              (!('guardian_sessions' in data) || (data.guardian_sessions is number && data.guardian_sessions >= 0)) &&
              (!('avg_rating' in data) || (data.avg_rating is number && data.avg_rating >= 0 && data.avg_rating <= 5)) &&
              (!('lastSeen' in data) || data.lastSeen is number) &&
-             (!('fcmToken' in data) || data.fcmToken is string);
+             (!('fcmToken' in data) || data.fcmToken is string) &&
+             (!('email' in data) || data.email is string) &&
+             (!('name' in data) || data.name is string) &&
+             (!('photoUrl' in data) || data.photoUrl is string);
     }
 
     function isValidQueueEntry() {
@@ -111,14 +118,21 @@ service cloud.firestore {
     }
 
     match /banned_users/{userId} {
-      allow read: if isAdmin() || isOwner(userId);
+      allow read: if isOwner(userId);
+      allow read: if isAdmin();
       allow create, update, delete: if isAdmin();
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId);
+      allow read: if isAdmin();
+      
       allow create: if isOwner(userId) && isValidUser();
-      allow update: if (isOwner(userId) && isValidUser()) || isAdmin();
+      allow create: if isAdmin();
+      
+      allow update: if isOwner(userId) && isValidUser();
+      allow update: if isAdmin();
+      
       allow delete: if isAdmin();
     }
 

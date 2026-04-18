@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
-import { Shield } from 'lucide-react';
+import { Shield, Settings } from 'lucide-react';
 
 export const AuthScreen = () => {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const handleEnter = async () => {
     setLoading(true);
     await login();
     // The auth state listener in useAuth will update the user and unmount this component
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    await loginWithGoogle();
   };
 
   return (
@@ -21,8 +26,17 @@ export const AuthScreen = () => {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md z-10"
+        className="w-full max-w-md z-10 relative"
       >
+        <button 
+          onClick={handleGoogleLogin} 
+          disabled={loading}
+          className="absolute -top-16 left-0 text-zinc-600 hover:text-zinc-400 transition-colors p-2"
+          title="Login with Google (Admin only)"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+
         <div className="text-center mb-12">
           <h1 className="text-4xl font-serif text-amber-500/90 mb-3">Confessio</h1>
           <p className="text-gray-500 text-lg">مكان لما لا يُقال</p>
