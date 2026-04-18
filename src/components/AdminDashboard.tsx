@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, updateDoc, doc, deleteDoc, orderBy, setDoc, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ShieldAlert, CheckCircle, Trash2, Eye, X, UserX, Activity, Users, FileWarning, BarChart, Unlock, Calendar, Award, Star, Flag, Search } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Trash2, Eye, X, UserX, Activity, Users, FileWarning, BarChart, Unlock, Calendar, Award, Star, Flag, Search, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Report {
@@ -11,6 +11,7 @@ interface Report {
   reportedRole: string;
   timestamp: number;
   status: 'pending' | 'reviewed';
+  reason?: string;
 }
 
 interface Message {
@@ -34,6 +35,7 @@ interface UserData {
 
 export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }> = ({ onClose, adminUid }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'moderation' | 'users'>('overview');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [activeRoomsCount, setActiveRoomsCount] = useState<number>(0);
   const [usersList, setUsersList] = useState<UserData[]>([]);
@@ -121,6 +123,60 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
     }
   };
 
+  const generateMockReport = async () => {
+    if (!window.confirm("Generate a mock abusive session and report for testing?")) return;
+    
+    try {
+      const mockRoomId = 'mock_room_' + Date.now();
+      const mockGuardianId = 'mock_abusive_guardian_' + Math.floor(Math.random() * 1000);
+      
+      // 1. Create Mock Room
+      await setDoc(doc(db, 'rooms', mockRoomId), {
+        confessorId: adminUid,
+        guardianId: mockGuardianId,
+        status: 'active',
+        createdAt: Date.now(),
+        language: 'ar'
+      });
+
+      // 2. Insert mock messages
+      const msgsRef = collection(db, 'rooms', mockRoomId, 'messages');
+      await setDoc(doc(msgsRef, 'msg1'), {
+        senderId: adminUid,
+        text: 'أشعر بالحزن الشديد هذه الأيام ولا أعرف السبب...',
+        timestamp: Date.now() - 120000,
+        status: 'read'
+      });
+      await setDoc(doc(msgsRef, 'msg2'), {
+        senderId: mockGuardianId,
+        text: 'بصراحة أنت تبالغ ومشاكلك تافهة جداً، توقف عن النحيب!',
+        timestamp: Date.now() - 60000,
+        status: 'read'
+      });
+      await setDoc(doc(msgsRef, 'msg3'), {
+        senderId: mockGuardianId,
+        text: 'أنت شخص ضعيف جداً.',
+        timestamp: Date.now() - 30000,
+        status: 'sent'
+      });
+
+      // 3. Create the report
+      await setDoc(doc(collection(db, 'reports')), {
+        roomId: mockRoomId,
+        reportedBy: adminUid,
+        reportedRole: 'guardian',
+        reason: 'تهجم لفظي وتقليل من شأن المشكلة بشكل عدواني',
+        timestamp: Date.now(),
+        status: 'pending'
+      });
+
+      alert("Mock report generated! It should appear in the queue instantly.");
+    } catch (error) {
+      console.error("Error generating mock report:", error);
+      alert("Failed to generate mock report.");
+    }
+  };
+
   const deleteRoom = async (roomId: string) => {
     if (!window.confirm("Delete this room and forcibly end session?")) return;
     try {
@@ -185,30 +241,58 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
   if (loading) return <div className="fixed inset-0 z-50 bg-[#09090b] flex items-center justify-center text-zinc-500">Loading Command Center...</div>;
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#09090b] text-zinc-200 flex font-sans overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#09090b] text-zinc-200 flex flex-col md:flex-row font-sans overflow-hidden">
+      
+      {/* Mobile Top Header */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-zinc-950 border-b border-white/5 relative z-30">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setIsMobileMenuOpen(true)} className="p-1.5 bg-white/5 rounded-lg text-zinc-400 hover:text-white transition-colors">
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2 border-l border-white/10 pl-3">
+            <ShieldAlert className="w-4 h-4 text-indigo-400" />
+            <h1 className="text-sm font-bold text-white tracking-tight">Command Center</h1>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-1.5 text-zinc-500 hover:text-white bg-white/5 rounded-lg transition-colors">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Mobile Backdrop */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden" 
+          onClick={() => setIsMobileMenuOpen(false)} 
+        />
+      )}
+
       {/* Sidebar Navigation */}
-      <aside className="w-72 bg-zinc-950 border-r border-white/5 flex flex-col relative z-20 shadow-2xl">
-        <div className="p-8 border-b border-white/5">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+      <aside className={`fixed md:static inset-y-0 left-0 z-50 w-72 bg-zinc-950 border-r border-white/5 flex flex-col shadow-2xl transform transition-transform duration-300 md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-6 md:p-8 border-b border-white/5 flex items-center justify-between mt-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 md:flex hidden">
               <ShieldAlert className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">Confessio</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight leading-none mb-1">Confessio</h1>
               <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold flex items-center gap-1">Command Center <Award className="w-3 h-3 text-amber-500"/></p>
             </div>
           </div>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-2 text-zinc-500 hover:text-white bg-white/5 rounded-lg">
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button 
-            onClick={() => setActiveTab('overview')}
+            onClick={() => { setActiveTab('overview'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === 'overview' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
           >
             <BarChart className="w-5 h-5" /> Overview
           </button>
           <button 
-            onClick={() => setActiveTab('moderation')}
+            onClick={() => { setActiveTab('moderation'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all font-medium ${activeTab === 'moderation' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
           >
             <div className="flex items-center gap-3">
@@ -221,7 +305,7 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
             )}
           </button>
           <button 
-            onClick={() => setActiveTab('users')}
+            onClick={() => { setActiveTab('users'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all font-medium ${activeTab === 'users' ? 'bg-white/10 text-white shadow-sm' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}`}
           >
             <div className="flex items-center gap-3">
@@ -236,7 +320,7 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
         <div className="p-6 border-t border-white/5">
           <button 
             onClick={onClose}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-white/5 hover:bg-rose-500/10 hover:text-rose-500 hover:border-rose-500/20 text-zinc-400 rounded-xl transition-all font-medium shadow-sm"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-900 border border-white/5 hover:bg-rose-500/10 hover:text-rose-500 hover:border-rose-500/20 text-zinc-400 rounded-xl transition-all font-medium shadow-sm transition-colors"
           >
             <X className="w-4 h-4" /> Exit Dashboard
           </button>
@@ -244,10 +328,10 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto bg-[#09090b] relative">
+      <main className="flex-1 overflow-y-auto bg-[#09090b] relative w-full">
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-rose-500/5 pointer-events-none" />
         
-        <div className="relative z-10 p-10 max-w-7xl mx-auto min-h-full">
+        <div className="relative z-10 p-4 md:p-10 max-w-7xl mx-auto min-h-full flex flex-col">
           
           <AnimatePresence mode="wait">
             {activeTab === 'overview' && (
@@ -273,15 +357,23 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
             )}
 
             {activeTab === 'moderation' && (
-              <motion.div key="moderation" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="h-[calc(100vh-80px)] flex flex-col">
-                <header className="mb-8 shrink-0">
-                  <h2 className="text-3xl font-bold text-white tracking-tight">Safety & Moderation</h2>
-                  <p className="text-zinc-400 mt-1">Review user reports and intervene in active sessions.</p>
+              <motion.div key="moderation" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex-1 flex flex-col min-h-0 lg:h-[calc(100vh-160px)]">
+                <header className="mb-6 lg:mb-8 shrink-0 flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
+                  <div>
+                    <h2 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Safety & Moderation</h2>
+                    <p className="text-zinc-400 mt-1 text-sm lg:text-base">Review user reports and intervene in active sessions.</p>
+                  </div>
+                  <button 
+                    onClick={generateMockReport} 
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-colors text-sm font-semibold w-full lg:w-auto"
+                  >
+                    + Auto-Generate Mock Report
+                  </button>
                 </header>
 
-                <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-0">
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 min-h-0 overflow-y-auto lg:overflow-hidden pb-10 lg:pb-0">
                   {/* Reports List Pane */}
-                  <div className="lg:col-span-4 xl:col-span-5 bg-zinc-900/50 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+                  <div className="lg:col-span-4 xl:col-span-5 bg-zinc-900/50 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col overflow-hidden shadow-2xl h-[400px] lg:h-auto">
                     <div className="p-4 border-b border-white/5 bg-zinc-900/80">
                       <h3 className="font-semibold text-white flex items-center gap-2">
                         <Flag className="w-4 h-4 text-zinc-400" /> Report Queue
@@ -312,6 +404,12 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
                             <div className="space-y-1 text-sm mb-4 bg-black/20 p-2 rounded-lg">
                               <div className="flex justify-between"><span className="text-zinc-500">Target Role:</span> <span className="text-amber-400 capitalize font-medium">{report.reportedRole}</span></div>
                               <div className="flex justify-between"><span className="text-zinc-500">Room:</span> <span className="font-mono text-xs text-zinc-400 truncate max-w-[100px]">{report.roomId}</span></div>
+                              {report.reason && (
+                                <div className="mt-2 pt-2 border-t border-white/5 flex flex-col gap-1">
+                                  <span className="text-zinc-500 text-xs text-left">Reason:</span>
+                                  <span className="text-rose-400 text-sm">{report.reason}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="flex gap-2 pt-3 border-t border-white/5">
                               {report.status === 'pending' && (
@@ -330,7 +428,7 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
                   </div>
 
                   {/* Room Context Pane */}
-                  <div className="lg:col-span-8 xl:col-span-7 bg-zinc-950/50 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col overflow-hidden relative shadow-2xl">
+                  <div className="lg:col-span-8 xl:col-span-7 bg-zinc-950/50 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col overflow-hidden relative shadow-2xl h-[500px] lg:h-auto mb-10 lg:mb-0">
                     <div className="p-4 border-b border-white/5 bg-zinc-900/80 flex items-center justify-between shrink-0">
                       <h3 className="font-semibold text-white flex items-center gap-2">
                         <Eye className="w-4 h-4 text-indigo-400" /> Evidence Viewer

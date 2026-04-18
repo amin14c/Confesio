@@ -1092,8 +1092,15 @@ export default function App() {
                       {msg.text}
                     </div>
                   ) : (
-                    <div className="relative group flex flex-col gap-1 max-w-[80%]">
-                      <div className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm flex flex-col gap-1 ${
+                    <div className="relative group flex flex-col gap-1 max-w-[85%] md:max-w-[75%]">
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.innerWidth < 768) {
+                            setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id);
+                          }
+                        }}
+                        className={`px-4 py-2.5 text-sm leading-relaxed shadow-sm flex flex-col gap-1 ${
                         msg.sender === 'me' 
                           ? 'bg-[var(--color-chat-me)] text-[var(--color-text-primary)]'
                           : 'bg-[var(--color-chat-other)] text-[var(--color-text-primary)]'
@@ -1101,7 +1108,7 @@ export default function App() {
                         msg.sender === 'me' 
                           ? (isGrouped ? 'rounded-2xl rounded-tr-sm rounded-br-sm' : 'rounded-2xl rounded-br-sm') 
                           : (isGrouped ? 'rounded-2xl rounded-tl-sm rounded-bl-sm' : 'rounded-2xl rounded-bl-sm')
-                      }`}
+                      } cursor-pointer md:cursor-default`}
                       dir="auto"
                       >
                         {msg.replyToText && !msg.isDeleted && (
@@ -1130,7 +1137,10 @@ export default function App() {
                       {/* Reaction Display */}
                       {msg.reaction && (
                         <button 
-                          onClick={() => handleReact(msg, msg.reaction!)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReact(msg, msg.reaction!);
+                          }}
                           className={`absolute -bottom-3 ${msg.sender === 'me' ? 'left-2' : 'right-2'} bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] hover:opacity-80 rounded-full px-1.5 py-0.5 text-sm shadow-md z-10 transition-colors cursor-pointer`}
                         >
                           {msg.reaction}
@@ -1139,7 +1149,10 @@ export default function App() {
 
                       {/* Action Buttons */}
                       {!msg.isDeleted && (
-                        <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1 bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm border border-[var(--color-bg-primary)] rounded-full shadow-sm p-1 z-10 ${msg.sender === 'me' ? '-left-28' : '-right-28'}`}>
+                        <div className={`absolute top-1/2 -translate-y-1/2 transition-all duration-200 flex items-center gap-1 bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm border border-[var(--color-bg-primary)] rounded-full shadow-sm p-1 z-10 
+                        ${msg.sender === 'me' ? '-left-28' : '-right-28'} 
+                        ${activeReactionMsgId === msg.id ? 'opacity-100 flex pointer-events-auto' : 'opacity-0 md:group-hover:opacity-100 pointer-events-none md:pointer-events-auto group-hover:pointer-events-auto'} 
+                        `}>
                           <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Reply className="w-3.5 h-3.5" /></button>
                           {msg.sender === 'me' && (
                             <>
@@ -1165,12 +1178,12 @@ export default function App() {
                       <AnimatePresence>
                         {activeReactionMsgId === msg.id && (
                           <motion.div 
-                            initial={{ opacity: 0, scale: 0.8, y: '-50%' }}
-                            animate={{ opacity: 1, scale: 1, y: '-50%' }}
-                            exit={{ opacity: 0, scale: 0.8, y: '-50%' }}
+                            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.8, y: 10 }}
                             transition={{ duration: 0.15, ease: "easeOut" }}
                             onClick={(e) => e.stopPropagation()}
-                            className={`absolute top-1/2 flex gap-1 bg-[var(--color-bg-secondary)]/95 backdrop-blur-md border border-[var(--color-bg-primary)] p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? '-left-[220px]' : '-right-[220px]'}`}
+                            className={`absolute -top-12 flex gap-1 bg-[var(--color-bg-secondary)]/95 backdrop-blur-md border border-[var(--color-bg-primary)] p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? 'right-0' : 'left-0'}`}
                           >
                             {emojis.map(emoji => (
                               <button
@@ -1179,7 +1192,7 @@ export default function App() {
                                   e.stopPropagation();
                                   handleReact(msg, emoji);
                                 }}
-                                className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-bg-primary)] rounded-full transition-all text-lg hover:scale-110"
+                                className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-bg-primary)] rounded-full transition-all text-lg hover:scale-110 cursor-pointer"
                               >
                                 {emoji}
                               </button>

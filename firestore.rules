@@ -100,12 +100,13 @@ service cloud.firestore {
 
     function isValidReport() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['roomId', 'reportedBy', 'reportedRole', 'timestamp', 'status']) &&
+      return hasOnlyAllowedFields(['roomId', 'reportedBy', 'reportedRole', 'timestamp', 'status', 'reason']) &&
              data.roomId is string && data.roomId.size() > 0 &&
              data.reportedBy == request.auth.uid &&
              data.reportedRole in ['confessor', 'guardian'] &&
              data.timestamp is number &&
-             data.status == 'pending';
+             (!('reason' in data) || data.reason is string) &&
+             data.status in ['pending', 'resolved', 'dismissed'];
     }
 
     // ===============================================================
