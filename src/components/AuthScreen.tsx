@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { Shield, Settings } from 'lucide-react';
+import { FloatingCandles } from './FloatingCandles';
 
 export const AuthScreen = () => {
   const { login, loginWithGoogle } = useAuth();
@@ -20,6 +21,7 @@ export const AuthScreen = () => {
 
   return (
     <div className="min-h-screen bg-[#050505] text-gray-300 flex flex-col items-center justify-center p-4 relative overflow-hidden" dir="rtl">
+      <FloatingCandles />
       {/* Candle Animation Background */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl animate-pulse" />
       

@@ -6,6 +6,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { AccountDashboard } from './components/AccountDashboard';
 import { AudioCall } from './components/AudioCall';
 import { AdminDashboard } from './components/AdminDashboard';
+import { FloatingCandles } from './components/FloatingCandles';
 import { db, auth, messaging } from './firebase';
 import { collection, doc, setDoc, getDoc, getDocs, query, where, onSnapshot, deleteDoc, addDoc, orderBy, updateDoc, limit } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -425,7 +426,8 @@ export default function App() {
               guardianId: guardianId,
               lang: commLang,
               status: 'active',
-              createdAt: now
+              createdAt: now,
+              typing: {}
             });
             
             // Delete the guardian's queue entry
@@ -597,18 +599,18 @@ export default function App() {
     if (!roomId || !user) return;
     
     if (!typingTimeoutRef.current) {
-      updateDoc(doc(db, 'rooms', roomId), {
-        [`typing.${user.uid}`]: true
-      }).catch(() => {});
+      setDoc(doc(db, 'rooms', roomId), {
+        typing: { [user.uid]: true }
+      }, { merge: true }).catch(console.error);
     }
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     
     typingTimeoutRef.current = setTimeout(() => {
       typingTimeoutRef.current = null;
-      updateDoc(doc(db, 'rooms', roomId), {
-        [`typing.${user.uid}`]: false
-      }).catch(() => {});
+      setDoc(doc(db, 'rooms', roomId), {
+        typing: { [user.uid]: false }
+      }, { merge: true }).catch(console.error);
     }, 2000);
   };
 
@@ -619,7 +621,9 @@ export default function App() {
     const text = inputText;
     setInputText('');
     
-    updateDoc(doc(db, 'rooms', roomId), { [`typing.${user.uid}`]: false }).catch(() => {});
+    setDoc(doc(db, 'rooms', roomId), { 
+      typing: { [user.uid]: false } 
+    }, { merge: true }).catch(console.error);
 
     if (editingMessage) {
       if (Date.now() - editingMessage.timestamp.getTime() > 5 * 60 * 1000) {
@@ -767,7 +771,7 @@ export default function App() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isOtherTyping]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -801,6 +805,7 @@ export default function App() {
 
   return (
     <div dir={isRtl ? 'rtl' : 'ltr'} className={`min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] flex flex-col font-sans selection:bg-[var(--color-accent)] selection:text-white relative transition-colors duration-500`}>
+      <FloatingCandles />
       {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} appLang={appLang} setAppLang={setAppLang} />}
       {showAdminDashboard && <AdminDashboard />}
       
@@ -817,6 +822,7 @@ export default function App() {
           >
             <div className="absolute top-6 right-6 flex items-center gap-4">
               <select 
+                aria-label="Select Theme"
                 value={theme}
                 onChange={(e) => setTheme(e.target.value as any)}
                 className="bg-[var(--color-bg-secondary)] text-[var(--color-text-primary)] border border-[var(--color-bg-primary)] rounded-lg px-3 py-1.5 text-sm outline-none"
@@ -827,11 +833,11 @@ export default function App() {
                 <option value="forest">Forest</option>
               </select>
               {isAdmin && user && (
-                <button onClick={() => setShowAdminDashboard(true)} className="p-2 text-indigo-400 hover:text-indigo-300 transition-colors" title="Admin Dashboard">
+                <button aria-label="Open Admin Dashboard" onClick={() => setShowAdminDashboard(true)} className="p-2 text-indigo-400 hover:text-indigo-300 transition-colors" title="Admin Dashboard">
                   <Shield className="w-6 h-6" />
                 </button>
               )}
-              <button onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
+              <button aria-label="Open User Dashboard" onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
                 <UserCircle className="w-8 h-8" />
               </button>
             </div>
@@ -878,7 +884,7 @@ export default function App() {
             className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full relative"
           >
             <div className="absolute top-6 right-6">
-              <button onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
+              <button aria-label="Open User Dashboard" onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
                 <UserCircle className="w-8 h-8" />
               </button>
             </div>
@@ -1151,18 +1157,19 @@ export default function App() {
                       {!msg.isDeleted && (
                         <div className={`absolute top-1/2 -translate-y-1/2 transition-all duration-200 flex items-center gap-1 bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm border border-[var(--color-bg-primary)] rounded-full shadow-sm p-1 z-10 
                         ${msg.sender === 'me' ? '-left-28' : '-right-28'} 
-                        ${activeReactionMsgId === msg.id ? 'opacity-100 flex pointer-events-auto' : 'opacity-0 md:group-hover:opacity-100 pointer-events-none md:pointer-events-auto group-hover:pointer-events-auto'} 
+                        ${activeReactionMsgId === msg.id ? 'opacity-100 flex pointer-events-auto' : 'opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 pointer-events-none md:pointer-events-auto group-hover:pointer-events-auto focus-within:pointer-events-auto'} 
                         `}>
-                          <button onClick={() => setReplyingTo(msg)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Reply className="w-3.5 h-3.5" /></button>
+                          <button aria-label="Reply to message" onClick={() => setReplyingTo(msg)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Reply className="w-3.5 h-3.5" /></button>
                           {msg.sender === 'me' && (
                             <>
                               {Date.now() - msg.timestamp.getTime() <= 5 * 60 * 1000 && (
-                                <button onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                                <button aria-label="Edit message" onClick={() => { setEditingMessage(msg); setInputText(msg.text); }} className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
                               )}
-                              <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-red-400 rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                              <button aria-label="Delete message" onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 text-[var(--color-text-secondary)] hover:text-red-400 rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                             </>
                           )}
                           <button 
+                            aria-label="React to message"
                             onClick={(e) => {
                               e.stopPropagation();
                               setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id);
@@ -1188,6 +1195,7 @@ export default function App() {
                             {emojis.map(emoji => (
                               <button
                                 key={emoji}
+                                aria-label={`React with ${emoji}`}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleReact(msg, emoji);
@@ -1230,7 +1238,7 @@ export default function App() {
                       <span className="truncate max-w-[200px] text-[var(--color-text-secondary)]">{replyingTo ? replyingTo.text : editingMessage?.text}</span>
                     </div>
                   </div>
-                  <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setInputText(''); }} className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] p-1">
+                  <button aria-label="Cancel reply or edit" onClick={() => { setReplyingTo(null); setEditingMessage(null); setInputText(''); }} className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] p-1">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1238,6 +1246,7 @@ export default function App() {
               <form onSubmit={handleSendMessage} className="relative flex items-center">
                 <input 
                   type="text"
+                  aria-label="Message input"
                   value={inputText}
                   onChange={handleTyping}
                   placeholder={t.placeholder}
@@ -1246,6 +1255,7 @@ export default function App() {
                 />
                 <button 
                   type="submit"
+                  aria-label="Send message"
                   disabled={!inputText.trim()}
                   className={`absolute p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] disabled:opacity-50 disabled:hover:text-[var(--color-text-secondary)] transition-colors ${isRtl ? 'right-2' : 'left-2'}`}
                 >

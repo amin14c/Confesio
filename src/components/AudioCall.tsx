@@ -436,12 +436,14 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
               {callState === 'incoming' ? (
                 <div className="flex w-full justify-around items-center max-w-sm mx-auto">
                   <button 
+                    aria-label="Decline Call"
                     onClick={() => endCall(true)}
                     className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90"
                   >
                     <PhoneOff className="w-7 h-7" />
                   </button>
                   <button 
+                    aria-label="Accept Call"
                     onClick={acceptCall}
                     className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg hover:bg-emerald-600 transition-transform active:scale-90 animate-pulse"
                   >
@@ -451,17 +453,19 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
               ) : (
                 <div className="flex items-center justify-center gap-8 bg-zinc-800/80 backdrop-blur-lg px-8 py-5 rounded-full shadow-2xl border border-white/5">
                   <button 
+                    aria-label={isMuted ? "Unmute Microphone" : "Mute Microphone"}
                     onClick={toggleMute}
                     className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
                     {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                   </button>
                   
-                  <button className={`w-14 h-14 rounded-full flex items-center justify-center transition-all bg-white/10 text-white hover:bg-white/20`}>
+                  <button aria-label="Speaker" className={`w-14 h-14 rounded-full flex items-center justify-center transition-all bg-white/10 text-white hover:bg-white/20`}>
                     <Volume2 className="w-6 h-6" />
                   </button>
 
                   <button 
+                    aria-label="End Call"
                     onClick={() => endCall(true)}
                     className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90"
                   >

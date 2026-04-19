@@ -205,6 +205,15 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
     });
   };
 
+  const deleteMessage = async (roomId: string, messageId: string) => {
+    if (!window.confirm("Are you sure you want to delete this specific message?")) return;
+    try {
+      await deleteDoc(doc(db, `rooms/${roomId}/messages`, messageId));
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
+  };
+
   const toggleBanUser = async (userId: string, currentlyBanned: boolean) => {
     if (currentlyBanned) {
       if (!window.confirm("Unban this user? They will be able to access the platform again.")) return;
@@ -228,7 +237,9 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
   };
 
   const filteredUsers = usersList.filter(u => 
-    u.uid.toLowerCase().includes(searchQuery.toLowerCase())
+    u.uid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const statsCards = [
@@ -246,7 +257,7 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
       {/* Mobile Top Header */}
       <div className="md:hidden flex items-center justify-between p-4 bg-zinc-950 border-b border-white/5 relative z-30">
         <div className="flex items-center gap-3">
-          <button onClick={() => setIsMobileMenuOpen(true)} className="p-1.5 bg-white/5 rounded-lg text-zinc-400 hover:text-white transition-colors">
+          <button aria-label="Open mobile menu" onClick={() => setIsMobileMenuOpen(true)} className="p-1.5 bg-white/5 rounded-lg text-zinc-400 hover:text-white transition-colors">
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2 border-l border-white/10 pl-3">
@@ -254,7 +265,7 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
             <h1 className="text-sm font-bold text-white tracking-tight">Command Center</h1>
           </div>
         </div>
-        <button onClick={onClose} className="p-1.5 text-zinc-500 hover:text-white bg-white/5 rounded-lg transition-colors">
+        <button aria-label="Close Admin Dashboard" onClick={onClose} className="p-1.5 text-zinc-500 hover:text-white bg-white/5 rounded-lg transition-colors">
           <X className="w-5 h-5" />
         </button>
       </div>
@@ -279,7 +290,7 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
               <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold flex items-center gap-1">Command Center <Award className="w-3 h-3 text-amber-500"/></p>
             </div>
           </div>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-2 text-zinc-500 hover:text-white bg-white/5 rounded-lg">
+          <button aria-label="Close mobile menu" onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-2 text-zinc-500 hover:text-white bg-white/5 rounded-lg">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -413,11 +424,11 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
                             </div>
                             <div className="flex gap-2 pt-3 border-t border-white/5">
                               {report.status === 'pending' && (
-                                <button onClick={(e) => { e.stopPropagation(); markAsReviewed(report.id); }} className="flex-1 py-1.5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-md transition-colors text-xs font-semibold flex items-center justify-center gap-1">
+                                <button aria-label="Resolve report" onClick={(e) => { e.stopPropagation(); markAsReviewed(report.id); }} className="flex-1 py-1.5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-md transition-colors text-xs font-semibold flex items-center justify-center gap-1">
                                   <CheckCircle className="w-3 h-3" /> Resolve
                                 </button>
                               )}
-                              <button onClick={(e) => { e.stopPropagation(); deleteReport(report.id); }} className="w-8 flex items-center justify-center bg-zinc-800 text-zinc-400 hover:bg-rose-500/20 hover:text-rose-400 rounded-md transition-colors shadow-sm">
+                              <button aria-label="Delete report" onClick={(e) => { e.stopPropagation(); deleteReport(report.id); }} className="w-8 flex items-center justify-center bg-zinc-800 text-zinc-400 hover:bg-rose-500/20 hover:text-rose-400 rounded-md transition-colors shadow-sm">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
@@ -466,10 +477,15 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
                               {!msg.isSystem && (
                                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5 relative z-10">
                                   <div className="text-[10px] text-zinc-600 font-mono truncate mr-2 bg-black/50 px-2 py-1 rounded">UID: {msg.senderId}</div>
-                                  <button onClick={() => toggleBanUser(msg.senderId, bannedUids.has(msg.senderId))} className={`text-xs font-bold px-3 py-1 rounded-md transition-colors flex items-center gap-1 shadow-sm ${bannedUids.has(msg.senderId) ? 'bg-zinc-800 text-emerald-400 hover:text-emerald-300' : 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/20'}`}>
-                                    {bannedUids.has(msg.senderId) ? <CheckCircle className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
-                                    {bannedUids.has(msg.senderId) ? 'Unban' : 'Ban'}
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button aria-label="Delete message" onClick={() => deleteMessage(selectedRoomId, msg.id)} className="text-[10px] uppercase font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-1 rounded transition-colors shadow-sm">
+                                      Delete Message
+                                    </button>
+                                    <button aria-label={bannedUids.has(msg.senderId) ? 'Unban User' : 'Ban User'} onClick={() => toggleBanUser(msg.senderId, bannedUids.has(msg.senderId))} className={`text-xs font-bold px-3 py-1 rounded-md transition-colors flex items-center gap-1 shadow-sm ${bannedUids.has(msg.senderId) ? 'bg-zinc-800 text-emerald-400 hover:text-emerald-300' : 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/20'}`}>
+                                      {bannedUids.has(msg.senderId) ? <CheckCircle className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
+                                      {bannedUids.has(msg.senderId) ? 'Unban' : 'Ban'}
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -527,8 +543,11 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
                               return (
                                 <tr key={u.uid} className="hover:bg-white/5 transition-colors group">
                                   <td className="p-4 pl-6">
-                                    <div className="font-mono text-sm text-zinc-300 font-medium">{u.uid}</div>
-                                    <div className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
+                                    <div className="font-mono text-xs text-zinc-400 font-medium">{u.uid}</div>
+                                    {(u.name || u.email) && (
+                                      <div className="text-sm font-semibold text-zinc-200 mt-1">{u.name || 'Unknown'} {u.email && <span className="text-xs text-zinc-500 font-normal ml-1">({u.email})</span>}</div>
+                                    )}
+                                    <div className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1">
                                       <Calendar className="w-3 h-3" /> Last online: {new Date(u.lastSeen || u.createdAt).toLocaleDateString()}
                                     </div>
                                   </td>
