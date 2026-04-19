@@ -366,10 +366,13 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
       
       {callState === 'idle' && (
         <button 
+          aria-label="Start Audio Call"
           onClick={startCall}
-          className="text-xs font-medium text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-[var(--color-bg-primary)] transition-colors flex items-center gap-1.5 bg-[var(--color-accent)]/10 px-3 py-1.5 rounded-full"
+          onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? startCall() : null}
+          tabIndex={0}
+          className="text-xs font-medium text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-[var(--color-bg-primary)] transition-colors flex items-center gap-1.5 bg-[var(--color-accent)]/10 px-3 py-1.5 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
         >
-          <Phone className="w-3.5 h-3.5" />
+          <Phone className="w-3.5 h-3.5" aria-hidden="true" />
           {t.startAudioCall || 'Start Call'}
         </button>
       )}
@@ -438,38 +441,51 @@ export const AudioCall: React.FC<AudioCallProps> = ({ roomId, userId, isRtl, t }
                   <button 
                     aria-label="Decline Call"
                     onClick={() => endCall(true)}
-                    className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90"
+                    onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? endCall(true) : null}
+                    tabIndex={0}
+                    className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-400"
                   >
-                    <PhoneOff className="w-7 h-7" />
+                    <PhoneOff className="w-7 h-7" aria-hidden="true" />
                   </button>
                   <button 
                     aria-label="Accept Call"
                     onClick={acceptCall}
-                    className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg hover:bg-emerald-600 transition-transform active:scale-90 animate-pulse"
+                    onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? acceptCall() : null}
+                    tabIndex={0}
+                    className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg hover:bg-emerald-600 transition-transform active:scale-90 animate-pulse focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-400 focus-visible:animate-none"
                   >
-                    <PhoneCall className="w-7 h-7" />
+                    <PhoneCall className="w-7 h-7" aria-hidden="true" />
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center justify-center gap-8 bg-zinc-800/80 backdrop-blur-lg px-8 py-5 rounded-full shadow-2xl border border-white/5">
+                <div role="group" aria-label="Call Controls" className="flex items-center justify-center gap-8 bg-zinc-800/80 backdrop-blur-lg px-8 py-5 rounded-full shadow-2xl border border-white/5">
                   <button 
                     aria-label={isMuted ? "Unmute Microphone" : "Mute Microphone"}
+                    aria-pressed={isMuted}
                     onClick={toggleMute}
-                    className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isMuted ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? toggleMute() : null}
+                    tabIndex={0}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50 ${isMuted ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
-                    {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                    {isMuted ? <MicOff className="w-6 h-6" aria-hidden="true" /> : <Mic className="w-6 h-6" aria-hidden="true" />}
                   </button>
                   
-                  <button aria-label="Speaker" className={`w-14 h-14 rounded-full flex items-center justify-center transition-all bg-white/10 text-white hover:bg-white/20`}>
-                    <Volume2 className="w-6 h-6" />
+                  <button 
+                    aria-label="Toggle Speaker" 
+                    tabIndex={0}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center transition-all bg-white/10 text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/50`}
+                  >
+                    <Volume2 className="w-6 h-6" aria-hidden="true" />
                   </button>
 
                   <button 
                     aria-label="End Call"
                     onClick={() => endCall(true)}
-                    className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90"
+                    onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? endCall(true) : null}
+                    tabIndex={0}
+                    className="w-16 h-16 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:bg-red-600 transition-transform active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-400"
                   >
-                    <PhoneOff className="w-7 h-7" />
+                    <PhoneOff className="w-7 h-7" aria-hidden="true" />
                   </button>
                 </div>
               )}
