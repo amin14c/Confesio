@@ -263,6 +263,8 @@ export default function App() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const emojis = ['❤️', '👍', '😢', '🙏', '✨'];
@@ -358,7 +360,11 @@ export default function App() {
       }
     };
     document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, [activeReactionMsgId]);
 
   // Matchmaking Logic
@@ -592,6 +598,79 @@ export default function App() {
       setQueueId(null);
     }
     setStep('role-select');
+  };
+
+  const toggleRecording = () => {
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert(isRtl ? 'الإملاء الصوتي غير مدعوم في متصفحك' : 'Speech recognition is not supported in your browser');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = commLang === 'ar' ? 'ar-SA' : commLang === 'fr' ? 'fr-FR' : commLang === 'es' ? 'es-ES' : 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    // Capture the text that was there before recording started
+    let initialText = inputText;
+
+    recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        initialText = (initialText + ' ' + finalTranscript).trim();
+      }
+
+      const currentText = (initialText + ' ' + interimTranscript).trim();
+      setInputText(currentText);
+
+      // Trigger typing indicator while speaking
+      if (!typingTimeoutRef.current && roomId && user) {
+        setDoc(doc(db, 'rooms', roomId), {
+          typing: { [user.uid]: true }
+        }, { merge: true }).catch(console.error);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== 'no-speech') {
+        console.error("Speech recognition error:", event.error);
+      }
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+      if (roomId && user) {
+        setDoc(doc(db, 'rooms', roomId), {
+          typing: { [user.uid]: false }
+        }, { merge: true }).catch(console.error);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+      setIsRecording(true);
+    } catch (e) {
+      console.error("Could not start speech recognition:", e);
+    }
   };
 
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1172,42 +1251,54 @@ export default function App() {
                             aria-label="React to message"
                             onClick={(e) => {
                               e.stopPropagation();
+                              e.preventDefault();
                               setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id);
                             }} 
+                            onTouchEnd={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              setActiveReactionMsgId(activeReactionMsgId === msg.id ? null : msg.id);
+                            }}
                             className="p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-full hover:bg-[var(--color-bg-primary)] transition-colors"
                           >
                             <Smile className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Emoji Picker */}
+                          <AnimatePresence>
+                            {activeReactionMsgId === msg.id && (
+                              <motion.div 
+                                initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                                transition={{ duration: 0.15, ease: "easeOut" }}
+                                onClick={(e) => e.stopPropagation()}
+                                onTouchEnd={(e) => e.stopPropagation()}
+                                className="absolute -top-14 right-0 flex gap-1 bg-[var(--color-bg-secondary)]/95 backdrop-blur-md border border-[var(--color-bg-primary)] p-1.5 rounded-full shadow-xl z-20"
+                              >
+                                {emojis.map(emoji => (
+                                  <button
+                                    key={emoji}
+                                    aria-label={`React with ${emoji}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleReact(msg, emoji);
+                                    }}
+                                    onTouchEnd={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      handleReact(msg, emoji);
+                                    }}
+                                    className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-bg-primary)] rounded-full transition-all text-lg hover:scale-110 cursor-pointer"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       )}
-
-                      {/* Emoji Picker */}
-                      <AnimatePresence>
-                        {activeReactionMsgId === msg.id && (
-                          <motion.div 
-                            initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                            transition={{ duration: 0.15, ease: "easeOut" }}
-                            onClick={(e) => e.stopPropagation()}
-                            className={`absolute -top-12 flex gap-1 bg-[var(--color-bg-secondary)]/95 backdrop-blur-md border border-[var(--color-bg-primary)] p-1.5 rounded-full shadow-xl z-20 ${msg.sender === 'me' ? 'right-0' : 'left-0'}`}
-                          >
-                            {emojis.map(emoji => (
-                              <button
-                                key={emoji}
-                                aria-label={`React with ${emoji}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleReact(msg, emoji);
-                                }}
-                                className="w-8 h-8 flex items-center justify-center hover:bg-[var(--color-bg-primary)] rounded-full transition-all text-lg hover:scale-110 cursor-pointer"
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
                   )}
                 </motion.div>
@@ -1251,7 +1342,7 @@ export default function App() {
                   onChange={handleTyping}
                   placeholder={t.placeholder}
                   dir="auto"
-                  className={`w-full bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] rounded-full py-4 text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)] transition-all ${isRtl ? 'pr-12 pl-6' : 'pl-12 pr-6'}`}
+                  className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] rounded-full py-4 text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)] transition-all px-12"
                 />
                 <button 
                   type="submit"
@@ -1260,6 +1351,14 @@ export default function App() {
                   className={`absolute p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] disabled:opacity-50 disabled:hover:text-[var(--color-text-secondary)] transition-colors ${isRtl ? 'right-2' : 'left-2'}`}
                 >
                   <Send className={`w-5 h-5 ${isRtl ? 'rotate-180' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={isRecording ? "Stop voice input" : "Start voice input"}
+                  onClick={toggleRecording}
+                  className={`absolute p-2 transition-colors ${isRtl ? 'left-2' : 'right-2'} ${isRecording ? 'text-red-500 bg-red-500/10 rounded-full animate-pulse' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] rounded-full hover:bg-[var(--color-bg-primary)]'}`}
+                >
+                  <Mic className="w-5 h-5" />
                 </button>
               </form>
             </div>
