@@ -898,7 +898,7 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="flex-1 flex flex-col items-center justify-center p-6 max-w-md mx-auto w-full relative"
           >
-            <div className="absolute top-6 right-6 flex items-center gap-4">
+            <div className="absolute top-6 right-6 flex items-center gap-4 z-50">
               <select 
                 aria-label="Select Theme"
                 value={theme}
@@ -910,15 +910,25 @@ export default function App() {
                 <option value="midnight">Midnight</option>
                 <option value="forest">Forest</option>
               </select>
-              {isAdmin && user && (
-                <button aria-label="Open Admin Dashboard" onClick={() => setShowAdminDashboard(true)} className="p-2 text-indigo-400 hover:text-indigo-300 transition-colors" title="Admin Dashboard">
-                  <Shield className="w-6 h-6" />
-                </button>
-              )}
+              
               <button aria-label="Open User Dashboard" onClick={() => setShowDashboard(true)} className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-accent)] transition-colors">
                 <UserCircle className="w-8 h-8" />
               </button>
             </div>
+
+            {isAdmin && user && (
+              <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50">
+                <button 
+                  aria-label="Open Admin Dashboard" 
+                  onClick={() => setShowAdminDashboard(true)} 
+                  className="flex items-center gap-2 px-6 py-3 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full hover:bg-indigo-500/30 transition-colors shadow-lg backdrop-blur-md" 
+                  title="Admin Dashboard"
+                >
+                  <Shield className="w-6 h-6" />
+                  <span className="font-semibold text-sm">Admin Dashboard</span>
+                </button>
+              </div>
+            )}
             <Globe2 className="w-12 h-12 text-[var(--color-text-secondary)] mb-8" strokeWidth={1} />
             <h1 className="text-2xl font-light mb-8 text-[var(--color-text-primary)]">Confessio</h1>
             
@@ -966,6 +976,21 @@ export default function App() {
                 <UserCircle className="w-8 h-8" />
               </button>
             </div>
+
+            {isAdmin && user && (
+              <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50">
+                <button 
+                  aria-label="Open Admin Dashboard" 
+                  onClick={() => setShowAdminDashboard(true)} 
+                  className="flex items-center gap-2 px-6 py-3 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full hover:bg-indigo-500/30 transition-colors shadow-lg backdrop-blur-md" 
+                  title="Admin Dashboard"
+                >
+                  <Shield className="w-6 h-6" />
+                  <span className="font-semibold text-sm">Admin Dashboard</span>
+                </button>
+              </div>
+            )}
+            
             <div className="text-center mb-16">
               <h1 className="text-4xl font-light tracking-widest mb-4 text-[var(--color-text-primary)]">Confessio</h1>
               <p className="text-[var(--color-text-secondary)] text-sm">{t.subtitle}</p>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, updateDoc, doc, deleteDoc, orderBy, setDoc, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ShieldAlert, CheckCircle, Trash2, Eye, X, UserX, Activity, Users, FileWarning, BarChart, Unlock, Calendar, Award, Star, Flag, Search, Menu } from 'lucide-react';
@@ -49,6 +49,8 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
   const [roomMessages, setRoomMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  const roomMessagesUnsub = useRef<(() => void) | null>(null);
 
   // Main real-time listeners for Reports, Bans, and Rooms
   useEffect(() => {
@@ -136,13 +138,25 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (roomMessagesUnsub.current) {
+        roomMessagesUnsub.current();
+      }
+    };
+  }, []);
+
   const viewRoomContext = (roomId: string) => {
     setSelectedRoomId(roomId);
     setLoadingMessages(true);
     setRoomMessages([]);
     
+    if (roomMessagesUnsub.current) {
+      roomMessagesUnsub.current();
+    }
+    
     const q = query(collection(db, `rooms/${roomId}/messages`), orderBy('timestamp', 'asc'));
-    onSnapshot(q, (snapshot) => {
+    roomMessagesUnsub.current = onSnapshot(q, (snapshot) => {
       setRoomMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Message[]);
       setLoadingMessages(false);
     }, (error) => {

@@ -42,19 +42,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let unsubDoc: (() => void) | undefined;
+    let unsubBan: (() => void) | undefined;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Clean up previous listeners if auth state changes
+      if (unsubDoc) unsubDoc();
+      if (unsubBan) unsubBan();
+
       if (firebaseUser) {
         
         // Listen to ban status
         const banRef = doc(db, 'banned_users', firebaseUser.uid);
-        const unsubBan = onSnapshot(banRef, (snap) => {
+        unsubBan = onSnapshot(banRef, (snap) => {
           setIsBanned(snap.exists());
         }, () => {});
 
         const userRef = doc(db, 'users', firebaseUser.uid);
         
         // Listen to user document
-        const unsubDoc = onSnapshot(userRef, (docSnap) => {
+        unsubDoc = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
             setUser(docSnap.data() as UserStats);
           } else {
@@ -84,10 +91,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setLoading(false); // Make sure we stop loading on error as well
         });
         
-        return () => {
-          unsubDoc();
-          unsubBan();
-        };
       } else {
         setUser(null);
         setIsBanned(false);
@@ -95,7 +98,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (unsubDoc) unsubDoc();
+      if (unsubBan) unsubBan();
+    };
   }, []);
 
   const login = async () => {
