@@ -123,60 +123,6 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
     }
   };
 
-  const generateMockReport = async () => {
-    if (!window.confirm("Generate a mock abusive session and report for testing?")) return;
-    
-    try {
-      const mockRoomId = 'mock_room_' + Date.now();
-      const mockGuardianId = 'mock_abusive_guardian_' + Math.floor(Math.random() * 1000);
-      
-      // 1. Create Mock Room
-      await setDoc(doc(db, 'rooms', mockRoomId), {
-        confessorId: adminUid,
-        guardianId: mockGuardianId,
-        status: 'active',
-        createdAt: Date.now(),
-        language: 'ar'
-      });
-
-      // 2. Insert mock messages
-      const msgsRef = collection(db, 'rooms', mockRoomId, 'messages');
-      await setDoc(doc(msgsRef, 'msg1'), {
-        senderId: adminUid,
-        text: 'أشعر بالحزن الشديد هذه الأيام ولا أعرف السبب...',
-        timestamp: Date.now() - 120000,
-        status: 'read'
-      });
-      await setDoc(doc(msgsRef, 'msg2'), {
-        senderId: mockGuardianId,
-        text: 'بصراحة أنت تبالغ ومشاكلك تافهة جداً، توقف عن النحيب!',
-        timestamp: Date.now() - 60000,
-        status: 'read'
-      });
-      await setDoc(doc(msgsRef, 'msg3'), {
-        senderId: mockGuardianId,
-        text: 'أنت شخص ضعيف جداً.',
-        timestamp: Date.now() - 30000,
-        status: 'sent'
-      });
-
-      // 3. Create the report
-      await setDoc(doc(collection(db, 'reports')), {
-        roomId: mockRoomId,
-        reportedBy: adminUid,
-        reportedRole: 'guardian',
-        reason: 'تهجم لفظي وتقليل من شأن المشكلة بشكل عدواني',
-        timestamp: Date.now(),
-        status: 'pending'
-      });
-
-      alert("Mock report generated! It should appear in the queue instantly.");
-    } catch (error) {
-      console.error("Error generating mock report:", error);
-      alert("Failed to generate mock report.");
-    }
-  };
-
   const deleteRoom = async (roomId: string) => {
     if (!window.confirm("Delete this room and forcibly end session?")) return;
     try {
@@ -374,12 +320,6 @@ export const AdminDashboard: React.FC<{ onClose: () => void; adminUid: string }>
                     <h2 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Safety & Moderation</h2>
                     <p className="text-zinc-400 mt-1 text-sm lg:text-base">Review user reports and intervene in active sessions.</p>
                   </div>
-                  <button 
-                    onClick={generateMockReport} 
-                    className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-colors text-sm font-semibold w-full lg:w-auto"
-                  >
-                    + Auto-Generate Mock Report
-                  </button>
                 </header>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 min-h-0 overflow-y-auto lg:overflow-hidden pb-10 lg:pb-0">
