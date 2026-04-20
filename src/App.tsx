@@ -243,6 +243,16 @@ if (typeof document !== 'undefined') {
 const playNotificationSound = (type: 'message' | 'match' = 'message') => {
   try {
     initAudio();
+    
+    // Add physical vibration for mobile devices
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (type === 'match') {
+        navigator.vibrate([200, 100, 200, 100, 400]); // Celebration vibration
+      } else {
+        navigator.vibrate([150, 100, 150]); // Double tap vibration
+      }
+    }
+
     if (!audioCtx) return;
 
     const osc = audioCtx.createOscillator();
