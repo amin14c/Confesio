@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 
 export const FloatingCandles = () => {
   return (
-    <div className="fixed inset-0 pointer-events-none z-[9999] overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
       {/* Container for glowing effect */}
       <div className="absolute inset-0 pointer-events-none opacity-20 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-orange-500/20 via-transparent to-transparent"></div>
       

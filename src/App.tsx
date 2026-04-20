@@ -228,20 +228,66 @@ const initAudio = () => {
       }
     }
     if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume();
+      audioCtx.resume().catch(() => {});
     }
   } catch (e) {
     console.error("Audio init failed", e);
   }
 };
 
-const playNotificationSound = () => {
-  const audio = new Audio('https://actions.google.com/sounds/v1/water/glass_water_pour.ogg');
-  audio.volume = 0.5;
-  audio.play().catch(e => {
-    // Autoplay policy prevented the sound. Normally happens if user hasn't interacted with the page yet.
-    console.log("Audio notification prevented by browser policy", e);
-  });
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', initAudio, { once: true });
+  document.addEventListener('touchstart', initAudio, { once: true });
+}
+
+const playNotificationSound = (type: 'message' | 'match' = 'message') => {
+  try {
+    initAudio();
+    if (!audioCtx) return;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    const now = audioCtx.currentTime;
+
+    if (type === 'match') {
+      // Pleasant rising arpeggio for "Match Found"
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, now); // A4
+      osc.frequency.exponentialRampToValueAtTime(554.37, now + 0.1); // C#5
+      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.2); // E5
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+      
+      osc.start(now);
+      osc.stop(now + 0.6);
+    } else {
+      // Gentle double ping for "New Message"
+      osc.type = 'sine';
+      
+      // First ping
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+      
+      // Second ping
+      osc.frequency.setValueAtTime(659.25, now + 0.15); // E5
+      gain.gain.setValueAtTime(0, now + 0.15);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.17);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+      
+      osc.start(now);
+      osc.stop(now + 0.5);
+    }
+  } catch (e) {
+    console.log("Audio notification failed", e);
+  }
 };
 
 export default function App() {
@@ -287,7 +333,10 @@ export default function App() {
   useEffect(() => {
     const checkAdminStatus = () => {
       // Check the underlying Firebase Auth user to see if it's the exact admin email
-      if (auth.currentUser && auth.currentUser.email === 'amin14c@gmail.com') {
+      if (
+        (auth.currentUser && auth.currentUser.email?.toLowerCase() === 'amin14c@gmail.com') ||
+        (user && user.email?.toLowerCase() === 'amin14c@gmail.com')
+      ) {
         setIsAdmin(true);
       } else {
         setIsAdmin(false);
@@ -401,6 +450,7 @@ export default function App() {
           setRoomId(roomDoc.id);
           setRoomCreatedAt(roomDoc.data().createdAt);
           setStep('chat');
+          playNotificationSound('match');
           // Clean up my queue entry
           deleteDoc(doc(db, 'queues', newQueueId)).catch(() => {});
         }
@@ -885,7 +935,6 @@ export default function App() {
     <div dir={isRtl ? 'rtl' : 'ltr'} className={`min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] flex flex-col font-sans selection:bg-[var(--color-accent)] selection:text-white relative transition-colors duration-500`}>
       <FloatingCandles />
       {showDashboard && <AccountDashboard onClose={() => setShowDashboard(false)} appLang={appLang} setAppLang={setAppLang} />}
-      {showAdminDashboard && <AdminDashboard />}
       
       <AnimatePresence mode="wait">
         
@@ -916,22 +965,9 @@ export default function App() {
               </button>
             </div>
 
-            {isAdmin && user && (
-              <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50">
-                <button 
-                  aria-label="Open Admin Dashboard" 
-                  onClick={() => setShowAdminDashboard(true)} 
-                  className="flex items-center gap-2 px-6 py-3 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full hover:bg-indigo-500/30 transition-colors shadow-lg backdrop-blur-md" 
-                  title="Admin Dashboard"
-                >
-                  <Shield className="w-6 h-6" />
-                  <span className="font-semibold text-sm">Admin Dashboard</span>
-                </button>
-              </div>
-            )}
             <Globe2 className="w-12 h-12 text-[var(--color-text-secondary)] mb-8" strokeWidth={1} />
             <h1 className="text-2xl font-light mb-8 text-[var(--color-text-primary)]">Confessio</h1>
-            
+
             <div className="w-full space-y-4">
               <button 
                 onClick={() => {
@@ -959,6 +995,20 @@ export default function App() {
                 <span className="font-medium font-sans">العربية</span>
               </button>
             </div>
+
+            {isAdmin && user && (
+              <div className="w-full mt-8 pt-6 border-t border-[var(--color-bg-primary)]">
+                <button 
+                  aria-label="Open Admin Dashboard" 
+                  onClick={() => setShowAdminDashboard(true)} 
+                  className="w-full flex justify-center items-center gap-2 p-4 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-all font-semibold shadow-lg backdrop-blur-md" 
+                  title="Admin Dashboard"
+                >
+                  <Shield className="w-5 h-5" />
+                  <span className="font-sans">لوحة تحكم الإدارة (Admin)</span>
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -976,20 +1026,6 @@ export default function App() {
                 <UserCircle className="w-8 h-8" />
               </button>
             </div>
-
-            {isAdmin && user && (
-              <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50">
-                <button 
-                  aria-label="Open Admin Dashboard" 
-                  onClick={() => setShowAdminDashboard(true)} 
-                  className="flex items-center gap-2 px-6 py-3 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-full hover:bg-indigo-500/30 transition-colors shadow-lg backdrop-blur-md" 
-                  title="Admin Dashboard"
-                >
-                  <Shield className="w-6 h-6" />
-                  <span className="font-semibold text-sm">Admin Dashboard</span>
-                </button>
-              </div>
-            )}
             
             <div className="text-center mb-16">
               <h1 className="text-4xl font-light tracking-widest mb-4 text-[var(--color-text-primary)]">Confessio</h1>
@@ -1023,6 +1059,20 @@ export default function App() {
                 )}
               </button>
             </div>
+
+            {isAdmin && user && (
+              <div className="w-full mt-8 pt-6 border-t border-[var(--color-bg-primary)]">
+                <button 
+                  aria-label="Open Admin Dashboard" 
+                  onClick={() => setShowAdminDashboard(true)} 
+                  className="w-full flex justify-center items-center gap-2 p-4 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-xl hover:bg-indigo-500/20 transition-all font-semibold shadow-lg backdrop-blur-md" 
+                  title="Admin Dashboard"
+                >
+                  <Shield className="w-5 h-5" />
+                  <span className="font-sans">لوحة تحكم الإدارة (Admin)</span>
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
 

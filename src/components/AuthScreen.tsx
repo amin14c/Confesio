@@ -25,20 +25,20 @@ export const AuthScreen = () => {
       {/* Candle Animation Background */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl animate-pulse" />
       
+      <button 
+        onClick={handleGoogleLogin} 
+        disabled={loading}
+        className="fixed top-4 left-4 z-50 text-zinc-700 hover:text-zinc-500 transition-colors p-2"
+        title="Login with Google (Admin only)"
+      >
+        <Settings className="w-5 h-5" />
+      </button>
+
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md z-10 relative"
       >
-        <button 
-          onClick={handleGoogleLogin} 
-          disabled={loading}
-          className="absolute -top-16 left-0 text-zinc-600 hover:text-zinc-400 transition-colors p-2"
-          title="Login with Google (Admin only)"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
-
         <div className="text-center mb-12">
           <h1 className="text-4xl font-serif text-amber-500/90 mb-3">Confessio</h1>
           <p className="text-gray-500 text-lg">مكان لما لا يُقال</p>

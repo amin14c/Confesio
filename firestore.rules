@@ -9,9 +9,9 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      // Safely check email to avoid Map property throwing errors for anonymous users
       return isAuthenticated() && 
-             request.auth.token.get('email', '') == 'amin14c@gmail.com';
+             ('email' in request.auth.token) && 
+             request.auth.token.email == 'amin14c@gmail.com';
     }
 
     function isOwner(userId) {
