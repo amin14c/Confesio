@@ -122,6 +122,7 @@ const translations = {
     report: 'Report',
     reportConfirm: 'Are you sure you want to report this user for abusive behavior?',
     reportSubmitted: 'Report submitted successfully. Our automated systems will review this session.',
+    typing: 'is typing...',
   },
   fr: {
     appLangTitle: "Langue de l'application",
@@ -164,6 +165,7 @@ const translations = {
     report: 'Signaler',
     reportConfirm: 'Êtes-vous sûr de vouloir signaler cet utilisateur pour comportement abusif ?',
     reportSubmitted: 'Signalement envoyé. Nos systèmes automatisés examineront cette session.',
+    typing: 'écrit...',
   },
   ar: {
     appLangTitle: 'اختر لغة التطبيق',
@@ -206,6 +208,7 @@ const translations = {
     report: 'إبلاغ',
     reportConfirm: 'هل أنت متأكد من الإبلاغ عن هذا المستخدم بسبب سلوك مسيء؟',
     reportSubmitted: 'تم إرسال البلاغ. ستقوم أنظمتنا الآلية بمراجعة هذه الجلسة.',
+    typing: 'يكتب...',
   }
 };
 
@@ -1391,10 +1394,15 @@ export default function App() {
               
               {isOtherTyping && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start mt-4">
-                  <div className="bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <div className="bg-[var(--color-bg-primary)] border border-[var(--color-bg-primary)] rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-3">
+                    <span className="text-xs text-[var(--color-text-secondary)]">
+                      {role === 'confessor' ? t.guardian : t.confessor} {t.typing}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)]/70 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)]/70 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-1.5 h-1.5 bg-[var(--color-text-secondary)]/70 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   </div>
                 </motion.div>
               )}
